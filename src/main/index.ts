@@ -1,6 +1,9 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, WebContents } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { registerPtyHandlers, killAllSessions } from './pty'
+
+let mainWebContents: WebContents | null = null
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -22,6 +25,11 @@ function createWindow(): void {
 
   win.on('ready-to-show', () => {
     win.show()
+    mainWebContents = win.webContents
+  })
+
+  win.on('closed', () => {
+    mainWebContents = null
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -43,11 +51,17 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  registerPtyHandlers(() => mainWebContents)
+
   createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  killAllSessions()
 })
 
 app.on('window-all-closed', () => {
