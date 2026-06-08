@@ -133,18 +133,18 @@ All renderer↔main communication through `window.takshashila`:
 
 ## Build Milestones
 
-| # | Name | Focus |
-|---|---|---|
-| 0 | Scaffold | electron-vite + React + TS + design tokens |
-| 1 | Real Terminals | node-pty + xterm.js + ConPTY |
-| 2 | Sabha Layer | File structure, mailboxes, router, itihas |
-| 3 | Chanakya | GOD agent, Stop-loop, Aadesh bar, Anumati queue |
-| 4 | Hook Server | Named pipe, cth-hook shim, avastha updates |
-| 5 | Court Floor | Pixi.js scene, tiled map, avatar sprites, camera |
-| 6 | Animations | Lamp overlay, scroll arc, avatar walk + A* |
-| 7 | Detail Panel | Terminal/Files/Git/Smriti tabs, CodeMirror |
-| 8 | Polish | Onboarding wizard, Add Shishya flow, search panels |
-| 9 | Packaging | electron-builder, NSIS installer, README |
+| # | Status | Name | Focus |
+|---|---|---|---|
+| 0 | ✅ Done | Scaffold | electron-vite + React + TS + design tokens |
+| 1 | ✅ Done | Real Terminals | node-pty + xterm.js + ConPTY |
+| 2 | 🔲 Next | Sabha Layer | File structure, mailboxes, router, itihas |
+| 3 | 🔲 | Chanakya | GOD agent, Stop-loop, Aadesh bar, Anumati queue |
+| 4 | 🔲 | Hook Server | Named pipe, cth-hook shim, avastha updates |
+| 5 | 🔲 | Court Floor | Pixi.js scene, tiled map, avatar sprites, camera |
+| 6 | 🔲 | Animations | Lamp overlay, scroll arc, avatar walk + A* |
+| 7 | 🔲 | Detail Panel | Terminal/Files/Git/Smriti tabs, CodeMirror |
+| 8 | 🔲 | Polish | Onboarding wizard, Add Shishya flow, search panels |
+| 9 | 🔲 | Packaging | electron-builder, NSIS installer, README |
 
 **Rule: Do not start M5 (Pixi.js floor) until M1 (terminals) works.**
 
