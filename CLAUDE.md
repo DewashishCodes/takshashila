@@ -155,12 +155,37 @@ All renderer↔main communication through `window.takshashila`:
 - Hook pipe conflicts: PID in pipe name, cleanup on `before-quit`
 - Sabha perf: only commit changed agent dirs, enforce 2000-word smriti limit
 
+## node-pty Windows Build — Known Patches
+
+After `npm install`, `node_modules/node-pty` requires three manual patches before `@electron/rebuild` succeeds:
+
+1. **`deps/winpty/src/winpty.gyp` line 13** — replace the `GetCommitHash.bat` shell call with a static value:
+   ```
+   'WINPTY_COMMIT_HASH%': 'none',
+   ```
+
+2. **`deps/winpty/src/winpty.gyp` line 25** — replace the `UpdateGenVersion.bat` shell call with a hardcoded include path:
+   ```
+   'gen',
+   ```
+   Then manually create `deps/winpty/src/gen/GenVersion.h`:
+   ```cpp
+   const char GenVersion_Version[] = "0.4.4-dev";
+   const char GenVersion_Commit[] = "none";
+   ```
+
+3. **`deps/winpty/src/winpty.gyp` lines 44 + 146** and **`binding.gyp` line 9** — disable Spectre mitigation (not installed in BuildTools by default):
+   ```
+   'SpectreMitigation': 'false'
+   ```
+
+Then run: `npx @electron/rebuild -f -w node-pty`
+
 ## Dev Commands
 
 ```bash
 npm run dev        # start app in dev mode (HMR)
 npm run build      # production build
 npm run preview    # preview production build
+npx @electron/rebuild -f -w node-pty   # rebuild node-pty after patching
 ```
-
-> Note: `postinstall` runs `electron-rebuild` for node-pty. Required after fresh install.
