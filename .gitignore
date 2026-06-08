@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-electron/
+out/
+.env
+*.local
+*.node
+.vscode/
+*.log
+npm-debug.log*
+release/
