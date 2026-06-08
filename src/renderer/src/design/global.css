@@ -1,0 +1,47 @@
+@import './tokens.css';
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+}
+
+body {
+  background: var(--color-stone);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Pixel-panel base — carved stone border style */
+.pixel-panel {
+  background: var(--color-stone-mid);
+  border: 2px solid var(--color-gold-dim);
+  box-shadow:
+    inset 0 0 0 1px var(--color-stone),
+    4px 4px 0 var(--color-stone),
+    0 0 20px rgba(244, 196, 48, 0.05);
+  image-rendering: pixelated;
+}
+
+.pixel-panel--active {
+  border-color: var(--color-gold);
+  box-shadow:
+    inset 0 0 0 1px var(--color-stone),
+    4px 4px 0 var(--color-stone),
+    0 0 20px rgba(244, 196, 48, 0.15);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-stone); }
+::-webkit-scrollbar-thumb { background: var(--color-gold-dim); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-gold); }
