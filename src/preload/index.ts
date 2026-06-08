@@ -1,15 +1,33 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-// Typed stub — each method will be wired to an IPC handler as milestones progress.
-// The shape here is the source of truth for window.takshashila.
 const takshashila = {
   pty: {
-    spawn: (_opts: SpawnOpts): Promise<string> => Promise.resolve(''),
-    write: (_id: string, _data: string): void => {},
-    resize: (_id: string, _cols: number, _rows: number): void => {},
-    kill: (_id: string): Promise<void> => Promise.resolve(),
-    onData: (_id: string, _cb: (data: string) => void): (() => void) => () => {}
+    spawn: (agentId: string, opts: SpawnOpts): Promise<string> =>
+      ipcRenderer.invoke('pty:spawn', agentId, opts),
+
+    write: (id: string, data: string): void =>
+      ipcRenderer.send('pty:write', id, data),
+
+    resize: (id: string, cols: number, rows: number): void =>
+      ipcRenderer.send('pty:resize', id, cols, rows),
+
+    kill: (id: string): Promise<void> =>
+      ipcRenderer.invoke('pty:kill', id),
+
+    onData: (id: string, cb: (data: string) => void): (() => void) => {
+      const channel = `pty:data:${id}`
+      const listener = (_: Electron.IpcRendererEvent, data: string): void => cb(data)
+      ipcRenderer.on(channel, listener)
+      return () => ipcRenderer.removeListener(channel, listener)
+    },
+
+    onExit: (id: string, cb: (code: number) => void): (() => void) => {
+      const channel = `pty:exit:${id}`
+      const listener = (_: Electron.IpcRendererEvent, code: number): void => cb(code)
+      ipcRenderer.on(channel, listener)
+      return () => ipcRenderer.removeListener(channel, listener)
+    }
   },
 
   sabha: {
