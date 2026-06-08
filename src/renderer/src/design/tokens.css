@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Yatra+One&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ── Backgrounds ─────────────────────────────────────────── */
+  --color-stone:       #2C1810;  /* deep burnt earth — app background */
+  --color-courtyard:   #8B6914;  /* sun-baked stone — floor tiles */
+  --color-stone-mid:   #3D2314;  /* panel backgrounds */
+  --color-stone-light: #5C3D1E;  /* elevated surfaces, cards */
+
+  /* ── Accents ─────────────────────────────────────────────── */
+  --color-gold:        #F4C430;  /* saffron gold — primary accent, active states */
+  --color-gold-dim:    #A8861E;  /* muted gold — secondary accent */
+  --color-terracotta:  #C1440E;  /* fired clay — warnings, escalations */
+  --color-lamp:        #FFD700;  /* lamp glow — active/working state */
+  --color-forest:      #2D5A27;  /* deep jungle green — idle state */
+  --color-ash:         #8C7B6B;  /* ash — secondary text */
+
+  /* ── Text ────────────────────────────────────────────────── */
+  --color-text-primary:   #F5E6C8;  /* warm parchment */
+  --color-text-secondary: #A89070;  /* aged ink */
+  --color-text-dim:       #6B5040;  /* faded ink — disabled / placeholder */
+
+  /* ── Status ──────────────────────────────────────────────── */
+  --color-active:  #FFD700;  /* lamp gold — working */
+  --color-idle:    #2D5A27;  /* forest green — awaiting */
+  --color-error:   #C1440E;  /* terracotta — vighna */
+  --color-success: #4A7C59;  /* deep sage — siddhi */
+
+  /* ── Typography ──────────────────────────────────────────── */
+  --font-display: 'Yatra One', serif;          /* app title, agent names */
+  --font-pixel:   'Press Start 2P', monospace; /* status labels, badges, counters */
+  --font-body:    'Noto Sans', sans-serif;     /* descriptions, prose */
+  --font-mono:    'JetBrains Mono', monospace; /* terminal, code, file paths */
+
+  /* ── Spacing ─────────────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-12: 48px;
+
+  /* ── Layout constants ────────────────────────────────────── */
+  --titlebar-height:   24px;
+  --strip-height:      96px;
+  --aadesh-bar-height: 48px;
+  --panel-width:       32%;
+}
