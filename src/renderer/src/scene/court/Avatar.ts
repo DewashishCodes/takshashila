@@ -1,8 +1,15 @@
-import { Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js'
+import { Container, Graphics, Text, TextStyle } from 'pixi.js'
 import { AVASTHA_COLOR_KEY, type ScenePalette } from './palette'
+import { drawSprite } from './sprites'
 
-// An agent on the court floor: selection ring under the feet, pixel sprite,
-// status dot above the head, name label below. Animations come in M6.
+// An agent on the court floor: selection ring under the feet, character
+// sprite (sprites.ts), status dot above the head, name label below.
+//
+// Idle bob: 1px shift on an 800ms cycle, offset per agent so the court
+// doesn't bob in robotic unison. Working: 1px forward lean, no bob.
+
+const BOB_CYCLE_MS = 800
+const BOB_STAGGER_MS = 200
 
 export class Avatar extends Container {
   readonly agentId: string
@@ -10,13 +17,12 @@ export class Avatar extends Container {
 
   private ring: Graphics
   private statusDot: Graphics
-  private sprite: Sprite
+  private bodyC: Container
   private pal: ScenePalette
 
   constructor(
     agentId: string,
     displayName: string,
-    texture: Texture,
     pal: ScenePalette,
     onTap: (id: string) => void
   ) {
@@ -27,23 +33,22 @@ export class Avatar extends Container {
     // selection ring — ellipse shadow under the feet, gold when selected
     this.ring = new Graphics()
     this.ring.beginFill(pal.gold, 0.35)
-    this.ring.drawEllipse(0, 0, 26, 10)
+    this.ring.drawEllipse(0, 0, 24, 9)
     this.ring.endFill()
     this.ring.lineStyle(2, pal.gold, 0.9)
-    this.ring.drawEllipse(0, 0, 26, 10)
+    this.ring.drawEllipse(0, 0, 24, 9)
     this.ring.position.set(0, 2)
     this.ring.visible = false
     this.addChild(this.ring)
 
-    const sprite = new Sprite(texture)
-    sprite.anchor.set(0.5, 1)
-    sprite.position.set(0, 0)
-    this.sprite = sprite
-    this.addChild(sprite)
+    // character sprite, origin at the feet
+    this.bodyC = new Container()
+    drawSprite(agentId, this.bodyC)
+    this.addChild(this.bodyC)
 
     // status dot above the head
     this.statusDot = new Graphics()
-    this.statusDot.position.set(0, -sprite.height - 8)
+    this.statusDot.position.set(0, -64)
     this.addChild(this.statusDot)
     this.setAvastha('idle')
 
@@ -82,6 +87,17 @@ export class Avatar extends Container {
 
   /** Idle glance — flip the sprite horizontally (ambient animation) */
   setFlip(flipped: boolean): void {
-    this.sprite.scale.x = flipped ? -1 : 1
+    this.bodyC.scale.x = flipped ? -1 : 1
+  }
+
+  /** Per-frame animation. `index` staggers the bob so agents stay out of sync. */
+  tick(elapsedMS: number, index: number): void {
+    if (this.avastha === 'working' || this.avastha === 'processing') {
+      // lean into the work
+      this.bodyC.position.y = 1
+      return
+    }
+    const phase = (elapsedMS + index * BOB_STAGGER_MS) % BOB_CYCLE_MS
+    this.bodyC.position.y = phase < BOB_CYCLE_MS / 2 ? 0 : -1
   }
 }

@@ -9,7 +9,7 @@ import { LampOverlay } from './LampOverlay'
 import { ScrollAnim } from './ScrollAnim'
 import { Ambient } from './Ambient'
 import { Minimap } from './Minimap'
-import { scenePalette, ROBE_COLORS, shade, type ScenePalette } from './palette'
+import { scenePalette, shade, type ScenePalette } from './palette'
 import {
   buildTileGrid, DESK_POSITIONS, overflowSeat, type Seat,
   DESK_OFFSET, LAMP_OFFSET, STOOL_OFFSET,
@@ -21,7 +21,7 @@ import {
   makeTileSet, makeDeskTexture, makeStoolTexture, makeBookshelfTexture,
   makePillarTexture, makeWallTexture, makeManuscriptTexture, makeLampTexture,
   makePotTexture, makeScrollPileTexture, makeStoneMarkTexture, makePlantTexture,
-  makeTrunkTexture, makeScrollSpriteTexture, makeAvatarTexture
+  makeTrunkTexture, makeScrollSpriteTexture
 } from './textures'
 
 interface SceneAgent {
@@ -47,9 +47,9 @@ export class CourtScene {
   private uiLayer = new Container()        // scroll flights, torch glows
 
   private avatars = new Map<string, Avatar>()
-  private avatarTextures = new Map<string, Texture>()
   private seats = new Map<string, Seat>()
   private overflowCount = 0
+  private elapsed = 0
 
   private scrollAnim: ScrollAnim
   private ambient: Ambient
@@ -130,10 +130,13 @@ export class CourtScene {
     // master ticker
     this.app.ticker.add(() => {
       const dms = this.app.ticker.deltaMS
+      this.elapsed += dms
       this.camera.update(dms)
       this.glowLayer.update(dms)
       this.scrollAnim.update(dms)
       this.ambient.update(dms, this.avatars)
+      let i = 0
+      for (const avatar of this.avatars.values()) avatar.tick(this.elapsed, i++)
     })
   }
 
@@ -317,14 +320,8 @@ export class CourtScene {
     for (const agent of agents) {
       let avatar = this.avatars.get(agent.id)
       if (!avatar) {
-        const robe = ROBE_COLORS[agent.id] ?? 0x8c7b6b
-        let tex = this.avatarTextures.get(agent.id)
-        if (!tex) {
-          tex = makeAvatarTexture(this.app.renderer, robe)
-          this.avatarTextures.set(agent.id, tex)
-        }
         const seat = this.seatFor(agent.id)
-        avatar = new Avatar(agent.id, agent.name, tex, this.pal, (id) => this.onSelect(id))
+        avatar = new Avatar(agent.id, agent.name, this.pal, (id) => this.onSelect(id))
         avatar.position.set(seat.x, seat.y)
         this.avatarLayer.addChild(avatar)
         this.avatars.set(agent.id, avatar)
@@ -362,7 +359,6 @@ export class CourtScene {
   destroy(): void {
     this.app.destroy(true, { children: true, texture: true, baseTexture: true })
     this.avatars.clear()
-    this.avatarTextures.clear()
     this.seats.clear()
   }
 }

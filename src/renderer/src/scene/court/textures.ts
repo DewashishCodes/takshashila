@@ -280,38 +280,7 @@ export function makeScrollSpriteTexture(renderer: IRenderer): Texture {
   return bake(renderer, g)
 }
 
-// ─── Avatar — 8×10 art-pixel person, robe color per agent ────────────────────
-
-const AVATAR_MAP = [
-  '..TTTT..',
-  '.TTTTTT.',
-  '.SSSSSS.',
-  '.SESSES.',
-  '..SSSS..',
-  '.RRRRRR.',
-  'RRRRRRRR',
-  'RRRDDRRR',
-  'RRRDDRRR',
-  '.RR..RR.'
-]
-
-export function makeAvatarTexture(renderer: IRenderer, robe: number): Texture {
-  const g = new Graphics()
-  const colors: Record<string, number> = {
-    T: shade(robe, 0.65),
-    S: 0xd9a066,
-    E: 0x2c1810,
-    R: robe,
-    D: shade(robe, 0.7)
-  }
-  for (let y = 0; y < AVATAR_MAP.length; y++) {
-    for (let x = 0; x < AVATAR_MAP[y].length; x++) {
-      const c = AVATAR_MAP[y][x]
-      if (c === '.') continue
-      px(g, colors[c], x, y)
-    }
-  }
-  return bake(renderer, g)
-}
+// Character avatars are NOT textures — they are drawn live with Graphics
+// primitives in sprites.ts (per-character anatomy + idle animation).
 
 export { TILE }
