@@ -176,7 +176,9 @@ Rules:
 
 ## Court Floor (M5 + visual overhaul)
 
-Pixi.js v7 scene in `src/renderer/src/scene/court/`. All art is procedural — chunky-rect pixel art (`PX = 4`) baked to NEAREST textures, zero external assets. CSP note: `@pixi/unsafe-eval` is imported at the top of CourtScene.ts because our CSP forbids `new Function` — never remove it.
+**Visual design reference: `design.md` (repo root) — keep it updated with any scene/sprite/animation change.**
+
+Pixi.js v7 scene in `src/renderer/src/scene/court/`. All art is procedural — chunky-rect pixel art (`PX = 4`) baked to NEAREST textures, zero external assets. Character sprites are drawn live in `sprites.ts` (16×28 grid, ×2 scale, per-character anatomy via `drawSprite(agentId, container)`). CSP note: `@pixi/unsafe-eval` is imported at the top of CourtScene.ts because our CSP forbids `new Function` — never remove it.
 
 - `layout.ts` — **single source of truth for all coordinates.** `DESK_POSITIONS` (all 7 agents), `buildTileGrid()` (38×25: floor variants, perimeter, paths, kund, grass, platform), chamber wall cells, landmarks (TREE, ENTRANCE, KUND, RANGOLI, PILLARS), `DECORATIONS`. New scene work imports from here — no magic numbers.
 - `palette.ts` — `cssColor()` reads design tokens at runtime; `ROBE_COLORS` per agent; `shade()`.
