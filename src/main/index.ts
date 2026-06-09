@@ -2,6 +2,11 @@ import { app, shell, BrowserWindow, WebContents } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerPtyHandlers, killAllSessions } from './pty'
+import { loadConfig, getConfig, registerConfigHandlers } from './config'
+import { initSabha, closeSabhaWatchers, registerSabhaHandlers } from './sabha'
+import { registerFsHandlers } from './fs'
+import { registerGitHandlers } from './git'
+import { startChanakya, stopChanakya, drainInbox, registerChanakyaHandlers } from './chanakya'
 
 let mainWebContents: WebContents | null = null
 
@@ -44,14 +49,27 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.dewashish.takshashila')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  registerPtyHandlers(() => mainWebContents)
+  const config = loadConfig()
+  await initSabha(config.sabhaHome)
+
+  const getSender = (): WebContents | null => mainWebContents
+
+  registerPtyHandlers(getSender)
+  registerConfigHandlers()
+  registerSabhaHandlers(getSender, getConfig, () => drainInbox())
+  registerFsHandlers(getConfig)
+  registerGitHandlers(getConfig)
+  registerChanakyaHandlers()
+
+  // Boot Chanakya — persistent claude session starts here
+  startChanakya(config, getSender)
 
   createWindow()
 
@@ -61,7 +79,9 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  stopChanakya()
   killAllSessions()
+  closeSabhaWatchers()
 })
 
 app.on('window-all-closed', () => {

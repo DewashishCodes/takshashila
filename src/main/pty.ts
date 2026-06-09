@@ -7,46 +7,74 @@ interface PtySession {
   agentId: string
 }
 
-const sessions = new Map<string, PtySession>()
+type DataListener = (data: string) => void
 
-// Default shell per platform
+const sessions = new Map<string, PtySession>()
+const extraListeners = new Map<string, Set<DataListener>>()
+
 const DEFAULT_SHELL = platform() === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash'
+
+// ─── Exported helpers (used by chanakya.ts and other supervisors) ─────────────
+
+export function spawnSession(
+  agentId: string,
+  opts: SpawnOpts,
+  getSender?: () => WebContents | null
+): string {
+  if (sessions.has(agentId)) {
+    sessions.get(agentId)!.process.kill()
+    sessions.delete(agentId)
+  }
+
+  const shell = opts.command || DEFAULT_SHELL
+  const proc = pty.spawn(shell, opts.args || [], {
+    name: 'xterm-256color',
+    cols: opts.cols ?? 220,
+    rows: opts.rows ?? 50,
+    cwd: opts.cwd || process.env.USERPROFILE || process.env.HOME || 'C:\\',
+    env: { ...process.env, ...opts.env } as Record<string, string>
+  })
+
+  proc.onData((data) => {
+    const sender = getSender?.()
+    if (sender && !sender.isDestroyed()) sender.send(`pty:data:${agentId}`, data)
+    extraListeners.get(agentId)?.forEach((cb) => cb(data))
+  })
+
+  proc.onExit(({ exitCode }) => {
+    sessions.delete(agentId)
+    const sender = getSender?.()
+    if (sender && !sender.isDestroyed()) sender.send(`pty:exit:${agentId}`, exitCode)
+  })
+
+  sessions.set(agentId, { process: proc, agentId })
+  return agentId
+}
+
+export function writeToSession(agentId: string, data: string): void {
+  sessions.get(agentId)?.process.write(data)
+}
+
+export function addDataListener(agentId: string, cb: DataListener): void {
+  if (!extraListeners.has(agentId)) extraListeners.set(agentId, new Set())
+  extraListeners.get(agentId)!.add(cb)
+}
+
+export function removeDataListener(agentId: string, cb: DataListener): void {
+  extraListeners.get(agentId)?.delete(cb)
+}
+
+export function hasSession(agentId: string): boolean {
+  return sessions.has(agentId)
+}
+
+// ─── IPC handlers ─────────────────────────────────────────────────────────────
 
 export function registerPtyHandlers(getSender: () => WebContents | null): void {
   ipcMain.handle('pty:spawn', (_event, agentId: string, opts: SpawnOpts) => {
-    if (sessions.has(agentId)) {
-      sessions.get(agentId)!.process.kill()
-      sessions.delete(agentId)
-    }
-
-    const shell = opts.command || DEFAULT_SHELL
-    const args = opts.args || []
-
-    const proc = pty.spawn(shell, args, {
-      name: 'xterm-256color',
-      cols: opts.cols ?? 80,
-      rows: opts.rows ?? 24,
-      cwd: opts.cwd || process.env.USERPROFILE || process.env.HOME || 'C:\\',
-      env: { ...process.env, ...opts.env } as Record<string, string>
-    })
-
-    proc.onData((data) => {
-      const sender = getSender()
-      if (sender && !sender.isDestroyed()) {
-        sender.send(`pty:data:${agentId}`, data)
-      }
-    })
-
-    proc.onExit(({ exitCode }) => {
-      sessions.delete(agentId)
-      const sender = getSender()
-      if (sender && !sender.isDestroyed()) {
-        sender.send(`pty:exit:${agentId}`, exitCode)
-      }
-    })
-
-    sessions.set(agentId, { process: proc, agentId })
-    return agentId
+    // If chanakya (or any supervisor) already spawned this session, just attach
+    if (sessions.has(agentId)) return agentId
+    return spawnSession(agentId, opts, getSender)
   })
 
   ipcMain.on('pty:write', (_event, agentId: string, data: string) => {

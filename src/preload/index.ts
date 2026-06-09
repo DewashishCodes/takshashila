@@ -31,43 +31,92 @@ const takshashila = {
   },
 
   sabha: {
-    getAgents: (): Promise<AgentIdentity[]> => Promise.resolve([]),
-    sendAadesh: (_text: string): Promise<string> => Promise.resolve(''),
-    getBlackboard: (): Promise<string> => Promise.resolve(''),
-    getItihas: (_limit?: number): Promise<ItihasEntry[]> => Promise.resolve([]),
-    onSandesh: (_cb: (msg: Sandesh) => void): (() => void) => () => {},
-    onAvashtaChange: (_cb: (update: AvashtaUpdate) => void): (() => void) => () => {}
+    getAgents: (): Promise<AgentIdentity[]> =>
+      ipcRenderer.invoke('sabha:getAgents'),
+
+    sendAadesh: (text: string): Promise<string> =>
+      ipcRenderer.invoke('sabha:sendAadesh', text),
+
+    getBlackboard: (): Promise<string> =>
+      ipcRenderer.invoke('sabha:getBlackboard'),
+
+    getItihas: (limit?: number): Promise<ItihasEntry[]> =>
+      ipcRenderer.invoke('sabha:getItihas', limit),
+
+    onSandesh: (cb: (msg: Sandesh) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, msg: Sandesh): void => cb(msg)
+      ipcRenderer.on('sabha:sandesh', listener)
+      return () => ipcRenderer.removeListener('sabha:sandesh', listener)
+    },
+
+    onAvashtaChange: (cb: (update: AvashtaUpdate) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, update: AvashtaUpdate): void => cb(update)
+      ipcRenderer.on('sabha:avastha-change', listener)
+      return () => ipcRenderer.removeListener('sabha:avastha-change', listener)
+    }
   },
 
   anumati: {
-    getPending: (): Promise<AnumatiItem[]> => Promise.resolve([]),
-    respond: (_id: string, _approved: boolean): Promise<void> => Promise.resolve(),
-    onNew: (_cb: (item: AnumatiItem) => void): (() => void) => () => {}
+    getPending: (): Promise<AnumatiItem[]> =>
+      ipcRenderer.invoke('anumati:getPending'),
+
+    respond: (id: string, approved: boolean): Promise<void> =>
+      ipcRenderer.invoke('anumati:respond', id, approved),
+
+    onNew: (cb: (item: AnumatiItem) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, item: AnumatiItem): void => cb(item)
+      ipcRenderer.on('anumati:new', listener)
+      return () => ipcRenderer.removeListener('anumati:new', listener)
+    }
   },
 
   smriti: {
-    getAgentSmriti: (_agentId: string): Promise<string> => Promise.resolve(''),
-    search: (_query: string): Promise<SmritiResult[]> => Promise.resolve([])
+    getAgentSmriti: (agentId: string): Promise<string> =>
+      ipcRenderer.invoke('smriti:getAgentSmriti', agentId),
+
+    search: (query: string): Promise<SmritiResult[]> =>
+      ipcRenderer.invoke('smriti:search', query)
   },
 
   fs: {
-    listDir: (_agentId: string, _rel: string): Promise<FsEntry[]> => Promise.resolve([]),
-    readFile: (_agentId: string, _rel: string): Promise<string> => Promise.resolve(''),
-    writeFile: (_agentId: string, _rel: string, _content: string): Promise<void> =>
-      Promise.resolve()
+    listDir: (agentId: string, rel: string): Promise<FsEntry[]> =>
+      ipcRenderer.invoke('fs:listDir', agentId, rel),
+
+    readFile: (agentId: string, rel: string): Promise<string> =>
+      ipcRenderer.invoke('fs:readFile', agentId, rel),
+
+    writeFile: (agentId: string, rel: string, content: string): Promise<void> =>
+      ipcRenderer.invoke('fs:writeFile', agentId, rel, content)
   },
 
   git: {
-    status: (_agentId: string): Promise<GitStatus> =>
-      Promise.resolve({ modified: [], staged: [], untracked: [] }),
-    log: (_agentId: string, _limit?: number): Promise<GitCommit[]> => Promise.resolve([]),
-    branches: (_agentId: string): Promise<string[]> => Promise.resolve([])
+    status: (agentId: string): Promise<GitStatus> =>
+      ipcRenderer.invoke('git:status', agentId),
+
+    log: (agentId: string, limit?: number): Promise<GitCommit[]> =>
+      ipcRenderer.invoke('git:log', agentId, limit),
+
+    branches: (agentId: string): Promise<string[]> =>
+      ipcRenderer.invoke('git:branches', agentId)
   },
 
   config: {
     get: (): Promise<HarnessConfig> =>
-      Promise.resolve({ sabhaHome: '', defaultCommand: 'claude', defaultShell: 'powershell.exe' }),
-    set: (_partial: Partial<HarnessConfig>): Promise<void> => Promise.resolve()
+      ipcRenderer.invoke('config:get'),
+
+    set: (partial: Partial<HarnessConfig>): Promise<void> =>
+      ipcRenderer.invoke('config:set', partial)
+  },
+
+  chanakya: {
+    status: (): Promise<string> =>
+      ipcRenderer.invoke('chanakya:status'),
+
+    restart: (): Promise<void> =>
+      ipcRenderer.invoke('chanakya:restart'),
+
+    anumatiRespond: (approved: boolean): Promise<void> =>
+      ipcRenderer.invoke('chanakya:anumati-respond', approved)
   }
 }
 
@@ -84,8 +133,7 @@ if (process.contextIsolated) {
 // ─── Shared types (also in src/renderer/src/types.ts) ───────────────────────
 
 interface SpawnOpts {
-  agentId: string
-  command: string
+  command?: string
   args?: string[]
   cwd?: string
   env?: Record<string, string>
