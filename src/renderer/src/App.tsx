@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import ShishyaPanel from './components/ShishyaPanel'
 import ShishyaCard from './components/ShishyaCard'
+import CourtFloor from './components/CourtFloor'
 
 interface Agent {
   id: string
@@ -65,8 +66,8 @@ export default function App(): React.JSX.Element {
         borderBottom: '1px solid var(--color-gold-dim)',
         display: 'flex', alignItems: 'center',
         paddingLeft: 'var(--space-4)',
-        WebkitAppRegion: 'drag' as React.CSSProperties['WebkitAppRegion'],
-        flexShrink: 0
+        flexShrink: 0,
+        ...({ WebkitAppRegion: 'drag' } as React.CSSProperties)
       }}>
         <span style={{ fontFamily: 'var(--font-pixel)', fontSize: 8, color: 'var(--color-gold)' }}>
           TAKSHASHILA
@@ -75,17 +76,12 @@ export default function App(): React.JSX.Element {
 
       {/* Main: court floor + detail panel */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Court floor placeholder */}
-        <div style={{
-          flex: 1, overflow: 'hidden',
-          background: 'var(--color-courtyard)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          opacity: 0.35
-        }}>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 28, color: 'var(--color-gold)' }}>
-            Court Floor — M5
-          </span>
-        </div>
+        {/* Court floor — Pixi.js scene */}
+        <CourtFloor
+          agents={agents}
+          selectedId={selectedId}
+          onSelect={(id) => setSelectedId(id)}
+        />
 
         {/* Shishya detail panel */}
         <ShishyaPanel agent={selectedAgent} />
