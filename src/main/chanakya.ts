@@ -193,11 +193,19 @@ function onOutput(data: string): void {
 
 // ─── Aadesh queue + flush ─────────────────────────────────────────────────────
 
+// Claude Code's TUI treats text+newline arriving together as a paste and
+// inserts the newline literally instead of submitting. Write the text first,
+// then send a lone \r (a real Enter keypress) after the TUI has ingested it.
+function submitToClaude(text: string): void {
+  writeToSession('chanakya', text)
+  setTimeout(() => writeToSession('chanakya', '\r'), 200)
+}
+
 function flushAadesh(): void {
   if (aadeshQueue.length === 0 || !promptReady) return
   const msg = aadeshQueue.shift()!
   promptReady = false
-  writeToSession('chanakya', msg + '\r\n')
+  submitToClaude(msg)
   setAvastha('working')
   resetWatchdog()
   log('aadesh:sent', { preview: msg.slice(0, 100) })
@@ -238,7 +246,7 @@ function processInbox(): void {
 
       if (promptReady) {
         promptReady = false
-        writeToSession('chanakya', prompt + '\r\n')
+        submitToClaude(prompt)
         setAvastha('working')
         resetWatchdog()
         log('sandesh:sent', { id: sandesh.id, subject: sandesh.subject })
