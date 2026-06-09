@@ -82,7 +82,9 @@ Renderer (React 18 + TypeScript)
           ├── identity.json
           ├── smriti.md
           ├── inbox/
-          └── outbox/
+          ├── outbox/
+          └── workspace/
+              └── CLAUDE.md         agent persona — read by Claude Code on startup
 ```
 
 ## Windows-Specific Rules
@@ -137,9 +139,9 @@ All renderer↔main communication through `window.takshashila`:
 |---|---|---|---|
 | 0 | ✅ Done | Scaffold | electron-vite + React + TS + design tokens |
 | 1 | ✅ Done | Real Terminals | node-pty + xterm.js + ConPTY |
-| 2 | 🔲 Next | Sabha Layer | File structure, mailboxes, router, itihas |
-| 3 | 🔲 | Chanakya | GOD agent, Stop-loop, Aadesh bar, Anumati queue |
-| 4 | 🔲 | Hook Server | Named pipe, cth-hook shim, avastha updates |
+| 2 | ✅ Done | Sabha Layer | File structure, mailboxes, router, itihas |
+| 3 | ✅ Done | Chanakya | GOD agent, Stop-loop, Aadesh bar, Anumati queue |
+| 4 | 🔲 Next | Hook Server | Named pipe, cth-hook shim, avastha updates |
 | 5 | 🔲 | Court Floor | Pixi.js scene, tiled map, avatar sprites, camera |
 | 6 | 🔲 | Animations | Lamp overlay, scroll arc, avatar walk + A* |
 | 7 | 🔲 | Detail Panel | Terminal/Files/Git/Smriti tabs, CodeMirror |
@@ -147,6 +149,16 @@ All renderer↔main communication through `window.takshashila`:
 | 9 | 🔲 | Packaging | electron-builder, NSIS installer, README |
 
 **Rule: Do not start M5 (Pixi.js floor) until M1 (terminals) works.**
+
+## Chanakya PTY — Lessons Learned
+
+These patterns are settled and must not be regressed:
+
+- **Persona via CLAUDE.md, never stdin** — writing a system prompt to the PTY echoes it visibly in the terminal. Instead write `CLAUDE.md` to the agent's workspace; Claude Code reads it silently on startup. `ensureChanakyaClaudeMd()` in `chanakya.ts` handles creation.
+- **Prompt-gated delivery** — never write an aadesh to the PTY unless Claude Code is at the `>` prompt. Use `promptReady` flag + `aadeshQueue`. Two ways it becomes true: (1) direct regex on stripped output `/(?:^|[\r\n])\s*>\s*$/`, (2) 1.5s silence fallback via `promptSilenceTimer`. Both call `markPromptReady()`.
+- **`\r\n` to submit** — Windows ConPTY + readline need carriage-return + line-feed. `\r` alone is not enough.
+- **ANSI stripping must cover private-mode CSI** — `\x1b[?25h` / `\x1b[?25l` use `?` as parameter byte (0x3f). The old `[0-9;]*` regex missed this. Correct range: `[\x30-\x3f]*` for parameter bytes.
+- **Terminal sizing** — register `term.onResize` before first `fitAddon.fit()` or the PTY never learns the real cols/rows. Always call `pty.resize` explicitly after spawn and in `ResizeObserver`.
 
 ## Key Risks
 
