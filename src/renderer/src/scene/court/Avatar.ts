@@ -6,9 +6,11 @@ import { AVASTHA_COLOR_KEY, type ScenePalette } from './palette'
 
 export class Avatar extends Container {
   readonly agentId: string
+  avastha = 'idle'
 
   private ring: Graphics
   private statusDot: Graphics
+  private sprite: Sprite
   private pal: ScenePalette
 
   constructor(
@@ -36,6 +38,7 @@ export class Avatar extends Container {
     const sprite = new Sprite(texture)
     sprite.anchor.set(0.5, 1)
     sprite.position.set(0, 0)
+    this.sprite = sprite
     this.addChild(sprite)
 
     // status dot above the head
@@ -60,6 +63,7 @@ export class Avatar extends Container {
   }
 
   setAvastha(avastha: string): void {
+    this.avastha = avastha
     const key = AVASTHA_COLOR_KEY[avastha] ?? 'idle'
     const color = this.pal[key]
     this.statusDot.clear()
@@ -74,5 +78,10 @@ export class Avatar extends Container {
 
   setSelected(selected: boolean): void {
     this.ring.visible = selected
+  }
+
+  /** Idle glance — flip the sprite horizontally (ambient animation) */
+  setFlip(flipped: boolean): void {
+    this.sprite.scale.x = flipped ? -1 : 1
   }
 }

@@ -27,23 +27,38 @@ export default function CourtFloor({ agents, selectedId, onSelect }: Props): Rea
   useEffect(() => {
     if (!hostRef.current) return
     let scene: CourtScene | null = null
+    let unsubSandesh: (() => void) | null = null
     try {
       scene = new CourtScene(hostRef.current, (id) => onSelectRef.current(id))
       sceneRef.current = scene
+      // sandesh between agents → scroll arcs between their desks
+      unsubSandesh = window.takshashila.sabha.onSandesh((msg) => {
+        sceneRef.current?.playScroll(msg.from, msg.to)
+      })
     } catch (err) {
       console.error('[CourtFloor] scene failed to start:', err)
       setSceneError((err as Error).message ?? String(err))
     }
     return () => {
+      unsubSandesh?.()
       scene?.destroy()
       sceneRef.current = null
     }
   }, [])
 
-  // Push agent state into the scene
+  // Push agent state into the scene. When Chanakya flips idle→working a new
+  // aadesh just landed — fly a scroll from the entrance (Samrat) to his desk.
+  const prevAvasthaRef = useRef<Record<string, string>>({})
   useEffect(() => {
-    try { sceneRef.current?.updateAgents(agents) }
-    catch (err) { console.error('[CourtFloor] updateAgents failed:', err) }
+    try {
+      const chanakya = agents.find((a) => a.id === 'chanakya')
+      const prev = prevAvasthaRef.current['chanakya']
+      if (chanakya && chanakya.avastha === 'working' && prev && prev !== 'working') {
+        sceneRef.current?.playScroll('samrat', 'chanakya')
+      }
+      for (const a of agents) prevAvasthaRef.current[a.id] = a.avastha
+      sceneRef.current?.updateAgents(agents)
+    } catch (err) { console.error('[CourtFloor] updateAgents failed:', err) }
   }, [agents])
 
   useEffect(() => {

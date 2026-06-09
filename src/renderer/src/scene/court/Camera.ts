@@ -1,12 +1,22 @@
 import { Container, FederatedPointerEvent } from 'pixi.js'
 
-// Pan/zoom controller for the world container. Drag empty floor to pan,
-// mouse wheel zooms toward the cursor. Taps on avatars are not swallowed:
-// panning only engages after the pointer moves past a small threshold.
+// Pan/zoom controller with tweened motion. Drag to pan, wheel zooms toward
+// the cursor (0.8–1.4×, relaxed down to fit-scale so the whole court is
+// always reachable). User input cancels any running tween.
 
-const MIN_ZOOM = 0.5
-const MAX_ZOOM = 2.5
-const DRAG_THRESHOLD = 5 // px before a press becomes a pan
+const MAX_ZOOM = 1.4
+const DRAG_THRESHOLD = 5
+
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
+const easeInOutCubic = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+
+interface Tween {
+  fromX: number; fromY: number; fromS: number
+  toX: number;   toY: number;   toS: number
+  t: number; dur: number
+  ease: (t: number) => number
+}
 
 export class Camera {
   private world: Container
@@ -14,7 +24,9 @@ export class Camera {
   private worldH: number
   private viewW = 0
   private viewH = 0
+  private minZoom = 0.8
 
+  private tween: Tween | null = null
   private dragging = false
   private panning = false
   private lastX = 0
@@ -28,17 +40,15 @@ export class Camera {
     this.worldH = worldH
   }
 
-  /** Wire pointer events on the stage and wheel on the canvas */
   attach(stage: Container, canvas: HTMLCanvasElement): void {
     stage.eventMode = 'static'
 
     stage.on('pointerdown', (e: FederatedPointerEvent) => {
+      this.tween = null // user takes over
       this.dragging = true
       this.panning = false
-      this.lastX = e.globalX
-      this.lastY = e.globalY
-      this.downX = e.globalX
-      this.downY = e.globalY
+      this.lastX = e.globalX; this.lastY = e.globalY
+      this.downX = e.globalX; this.downY = e.globalY
     })
 
     stage.on('pointermove', (e: FederatedPointerEvent) => {
@@ -52,8 +62,7 @@ export class Camera {
       }
       this.world.x += dx
       this.world.y += dy
-      this.lastX = e.globalX
-      this.lastY = e.globalY
+      this.lastX = e.globalX; this.lastY = e.globalY
       this.clamp()
     })
 
@@ -63,11 +72,11 @@ export class Camera {
 
     canvas.addEventListener('wheel', (e: WheelEvent) => {
       e.preventDefault()
-      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12
-      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.world.scale.x * factor))
+      this.tween = null
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1
+      const next = Math.min(MAX_ZOOM, Math.max(this.minZoom, this.world.scale.x * factor))
       const applied = next / this.world.scale.x
       if (applied === 1) return
-      // zoom toward the cursor: keep the world point under it stationary
       const rect = canvas.getBoundingClientRect()
       const cx = e.clientX - rect.left
       const cy = e.clientY - rect.top
@@ -81,22 +90,79 @@ export class Camera {
   resize(viewW: number, viewH: number): void {
     this.viewW = viewW
     this.viewH = viewH
+    // never trap the user above fit-scale: relax the lower zoom bound
+    this.minZoom = Math.min(0.8, this.fitScale())
     this.clamp()
   }
 
-  /** Fit and center the whole court in the view */
-  fit(): void {
-    if (this.viewW === 0 || this.viewH === 0) return
-    const scale = Math.min(this.viewW / this.worldW, this.viewH / this.worldH)
-    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale))
-    this.world.scale.set(clamped)
-    this.world.x = (this.viewW - this.worldW * clamped) / 2
-    this.world.y = (this.viewH - this.worldH * clamped) / 2
+  private fitScale(): number {
+    if (this.viewW === 0) return 0.8
+    return Math.min(this.viewW / this.worldW, this.viewH / this.worldH)
   }
 
-  /** Keep at least a third of the court on screen */
+  /** Instantly center on a world point at the given scale */
+  jumpTo(wx: number, wy: number, scale: number): void {
+    this.world.scale.set(scale)
+    this.world.x = this.viewW / 2 - wx * scale
+    this.world.y = this.viewH / 2 - wy * scale
+  }
+
+  /** Tween to center a world point. Keeps current scale unless given one. */
+  panTo(wx: number, wy: number, durMs = 400, scale?: number): void {
+    const s = scale ?? this.world.scale.x
+    this.tween = {
+      fromX: this.world.x, fromY: this.world.y, fromS: this.world.scale.x,
+      toX: this.viewW / 2 - wx * s,
+      toY: this.viewH / 2 - wy * s,
+      toS: s,
+      t: 0, dur: durMs,
+      ease: easeOutCubic
+    }
+  }
+
+  /** Tween to the full-court fit view */
+  panToFit(durMs = 1500): void {
+    const s = this.fitScale()
+    this.tween = {
+      fromX: this.world.x, fromY: this.world.y, fromS: this.world.scale.x,
+      toX: (this.viewW - this.worldW * s) / 2,
+      toY: (this.viewH - this.worldH * s) / 2,
+      toS: s,
+      t: 0, dur: durMs,
+      ease: easeInOutCubic
+    }
+  }
+
+  /** Load sequence: start tight on the entrance, drift up to the full court */
+  intro(entranceX: number, entranceY: number): void {
+    this.jumpTo(entranceX, entranceY - 60, 1.15)
+    this.panToFit(1500)
+  }
+
+  fitNow(): void {
+    const s = this.fitScale()
+    this.world.scale.set(s)
+    this.world.x = (this.viewW - this.worldW * s) / 2
+    this.world.y = (this.viewH - this.worldH * s) / 2
+  }
+
+  /** Advance tweens — call every frame with elapsed ms */
+  update(deltaMS: number): void {
+    if (!this.tween) return
+    const tw = this.tween
+    tw.t += deltaMS
+    const k = Math.min(1, tw.t / tw.dur)
+    const e = tw.ease(k)
+    const s = tw.fromS + (tw.toS - tw.fromS) * e
+    this.world.scale.set(s)
+    this.world.x = tw.fromX + (tw.toX - tw.fromX) * e
+    this.world.y = tw.fromY + (tw.toY - tw.fromY) * e
+    if (k >= 1) this.tween = null
+  }
+
+  /** Keep at least a third of the court on screen during manual panning */
   private clamp(): void {
-    if (this.viewW === 0) return
+    if (this.viewW === 0 || this.tween) return
     const s = this.world.scale.x
     const w = this.worldW * s
     const h = this.worldH * s
