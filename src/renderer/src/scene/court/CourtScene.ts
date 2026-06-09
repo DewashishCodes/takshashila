@@ -1,3 +1,7 @@
+// Our CSP has script-src 'self' (no unsafe-eval). Pixi normally generates
+// batch shaders with `new Function` — this patch makes it work without eval.
+// Must be imported before the first Application is constructed.
+import '@pixi/unsafe-eval'
 import { Application, Container, Sprite, Texture } from 'pixi.js'
 import { Avatar } from './Avatar'
 import { Camera } from './Camera'
