@@ -9,6 +9,7 @@ import { LampOverlay } from './LampOverlay'
 import { ScrollAnim } from './ScrollAnim'
 import { Ambient } from './Ambient'
 import { Minimap } from './Minimap'
+import { initAmbientObjects } from './ambientObjects'
 import { scenePalette, shade, type ScenePalette } from './palette'
 import {
   buildTileGrid, DESK_POSITIONS, overflowSeat, type Seat,
@@ -50,6 +51,7 @@ export class CourtScene {
   private seats = new Map<string, Seat>()
   private overflowCount = 0
   private elapsed = 0
+  private cleanups: Array<() => void> = []
 
   private scrollAnim: ScrollAnim
   private ambient: Ambient
@@ -100,6 +102,15 @@ export class CourtScene {
     this.buildTree()
     this.buildRangoli()
     this.buildSeating()
+
+    // ambient zones: teaching circle, inscription wall, debate pit, scatter
+    initAmbientObjects(this.world, {
+      groundLayer: this.groundLayer,
+      furnitureLayer: this.furnitureLayer,
+      uiLayer: this.uiLayer,
+      ticker: this.app.ticker,
+      addCleanup: (fn) => this.cleanups.push(fn)
+    })
 
     this.scrollAnim = new ScrollAnim(makeScrollSpriteTexture(r))
     this.uiLayer.addChild(this.scrollAnim)
@@ -357,6 +368,8 @@ export class CourtScene {
   }
 
   destroy(): void {
+    for (const fn of this.cleanups) { try { fn() } catch { /* already gone */ } }
+    this.cleanups = []
     this.app.destroy(true, { children: true, texture: true, baseTexture: true })
     this.avatars.clear()
     this.seats.clear()

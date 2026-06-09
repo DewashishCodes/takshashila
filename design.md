@@ -94,6 +94,15 @@ sandals (2×3px) → dhoti (~12×10) → uttariya shawl (~10×6, lighter) → he
 API: `drawSprite(agentId, container)` — the only way avatars are drawn.
 Unknown agents get a neutral fallback body.
 
+## 5b. Ambient zones (`ambientObjects.ts`)
+
+Pure scenery + read-only reactions. Entry: `initAmbientObjects(stage, CourtLayout)` — called once by CourtScene after the map is built.
+
+- **Teaching circle** (banyan tree base): 5 seated student NPCs (8×14 grid, ×2, no interaction) in a semicircle with slate tablets facing the tree. A Sanskrit shloka floats above the canopy every 12–20s (4 strings cycled in order; fade 0.5s / hold 2s / fade 0.5s; gold @ 0.7 alpha; Devanagari falls back from Press Start 2P to Noto Sans).
+- **Arthashastra wall** (right side, 170×220 @ 1010,210): stone slab, etched book index (gold @ 0.3), diamond divider, cracks, drop shadow. Clickable → `window` CustomEvent `takshashila:scene` with `{ event: 'ARTHASHASTRA_CLICKED' }` — React layer wires a panel later.
+- **Debate pit** (608,638, r30, above the rangoli): ring platform, two facing podiums, 8-petal lotus mandala (gold @ 0.2). Lotus pulses 1→1.2→1 over 600ms whenever any agent's avastha flips to working (read-only `onAvashtaChange` subscription, cleaned up on scene destroy).
+- **Seeded scatter** (seed 42, deterministic): pot clusters / angled scroll piles / carved stone markers on free floor tiles (>2 tiles from any desk, landmark, or zone; ~8% of eligible tiles), plus wall-mounted torch brackets on perimeter tiles with 2-frame flames alternating every 150ms.
+
 ## 6. Animation timings
 
 | Animation | Timing | Notes |
@@ -109,6 +118,9 @@ Unknown agents get a neutral fallback body.
 | Banyan leaves | 5 quads, 4–9px/s upward drift | loop within canopy, sine sway |
 | Camera intro | 1.5s entrance → full court | ease-in-out cubic |
 | Camera focus pan | 400ms to selected desk | ease-out cubic, user input cancels |
+| Shloka float | every 12–20s; 0.5s in / 2s hold / 0.5s out | gold @ 0.7, above canopy |
+| Lotus pulse | 600ms, scale 1→1.2→1 | on any avastha → working |
+| Torch bracket flames | 2 shapes, alternate 150ms | scatter zone, perimeter |
 
 ## 7. Camera & minimap
 
