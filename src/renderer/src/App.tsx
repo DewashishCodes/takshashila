@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import ShishyaPanel from './components/ShishyaPanel'
 import ShishyaCard from './components/ShishyaCard'
 
@@ -10,7 +10,8 @@ interface Agent {
   lastKriya?: string
 }
 
-const INITIAL_AGENTS: Agent[] = [
+// Fallback while Sabha loads
+const AGENT_SEEDS: Agent[] = [
   { id: 'chanakya',      name: 'Chanakya',      domain: 'Orchestrator',   avastha: 'idle' },
   { id: 'aaruni',        name: 'Aaruni',         domain: 'Executor',       avastha: 'idle' },
   { id: 'nachiketa',     name: 'Nachiketa',      domain: 'Researcher',     avastha: 'idle' },
@@ -21,10 +22,27 @@ const INITIAL_AGENTS: Agent[] = [
 ]
 
 export default function App(): React.JSX.Element {
-  const [agents] = useState<Agent[]>(INITIAL_AGENTS)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [agents, setAgents] = useState<Agent[]>(AGENT_SEEDS)
+  const [selectedId, setSelectedId] = useState<string | null>('chanakya')
   const [aadesh, setAadesh] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Load agents from Sabha on mount
+  useEffect(() => {
+    window.takshashila.sabha.getAgents().then((loaded) => {
+      if (loaded.length > 0) setAgents(loaded.map(a => ({ ...a, lastKriya: undefined })))
+    }).catch(() => { /* use seeds */ })
+
+    // Subscribe to avastha changes
+    const unsub = window.takshashila.sabha.onAvashtaChange((update) => {
+      setAgents(prev => prev.map(a =>
+        a.id === update.agentId
+          ? { ...a, avastha: update.avastha, lastKriya: update.lastKriya }
+          : a
+      ))
+    })
+    return unsub
+  }, [])
 
   const selectedAgent = agents.find((a) => a.id === selectedId) ?? null
 

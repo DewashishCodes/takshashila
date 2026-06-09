@@ -30,8 +30,8 @@ export default function TerminalPane({ agentId }: Props): React.JSX.Element {
         brightCyan:    '#7FBFBF', brightWhite:   '#FFFFFF'
       },
       fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-      fontSize: 13,
-      lineHeight: 1.4,
+      fontSize: 11,
+      lineHeight: 1.3,
       cursorBlink: true,
       cursorStyle: 'block',
       allowTransparency: false,
@@ -42,6 +42,9 @@ export default function TerminalPane({ agentId }: Props): React.JSX.Element {
     term.loadAddon(fitAddon)
     term.loadAddon(new WebLinksAddon())
     term.open(containerRef.current)
+
+    // Register onResize BEFORE the first fit so the PTY gets the correct initial size
+    term.onResize(({ cols, rows }) => window.takshashila.pty.resize(agentId, cols, rows))
     fitAddon.fit()
 
     termRef.current = term
@@ -56,16 +59,15 @@ export default function TerminalPane({ agentId }: Props): React.JSX.Element {
     // Keystrokes → PTY
     term.onData((data) => window.takshashila.pty.write(agentId, data))
 
-    // Resize → PTY
-    term.onResize(({ cols, rows }) => window.takshashila.pty.resize(agentId, cols, rows))
-
-    // Spawn the agent process
-    window.takshashila.pty.spawn(agentId, {}).then(() => {
-      fitAddon.fit()
+    // Spawn the agent process with the correct initial size; force a resize sync after
+    // in case the session already existed (Chanakya) and had different dimensions
+    window.takshashila.pty.spawn(agentId, { cols: term.cols, rows: term.rows }).then(() => {
+      window.takshashila.pty.resize(agentId, term.cols, term.rows)
     })
 
     const ro = new ResizeObserver(() => {
       fitAddon.fit()
+      window.takshashila.pty.resize(agentId, term.cols, term.rows)
     })
     ro.observe(containerRef.current)
 
@@ -84,8 +86,7 @@ export default function TerminalPane({ agentId }: Props): React.JSX.Element {
       style={{
         flex: 1,
         overflow: 'hidden',
-        background: '#1A0E08',
-        padding: '4px'
+        background: '#1A0E08'
       }}
     />
   )
