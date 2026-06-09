@@ -43,9 +43,10 @@ let getSender: () => WebContents | null = () => null
 let currentAvastha: Avastha = 'idle'
 let silenceTimer: NodeJS.Timeout | null = null
 let watchdogTimer: NodeJS.Timeout | null = null
+let promptSilenceTimer: NodeJS.Timeout | null = null
 let inboxWatcher: FSWatcher | null = null
 
-// Claude Code signals it is at the '>' prompt → safe to write
+// Claude Code is at the '>' prompt → safe to write
 let promptReady = false
 const aadeshQueue: string[] = []
 
@@ -143,9 +144,22 @@ export function startChanakya(
 
 function stripAnsi(s: string): string {
   return s
-    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-    .replace(/\x1b\][^\x07]*\x07/g, '')
+    // CSI sequences — parameter bytes include 0x30-0x3f which covers ?, <, =, >
+    // This handles \x1b[?25h, \x1b[?1049h, \x1b[>c etc. that the old regex missed
+    .replace(/\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, '')
+    // OSC sequences
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+    // Character set, DCS, and any remaining ESC + one char
     .replace(/\x1b[()][AB012]/g, '')
+    .replace(/\x1b./g, '')
+}
+
+function markPromptReady(): void {
+  if (promptSilenceTimer) { clearTimeout(promptSilenceTimer); promptSilenceTimer = null }
+  if (!promptReady) {
+    promptReady = true
+    if (aadeshQueue.length > 0) setTimeout(flushAadesh, 50)
+  }
 }
 
 function onOutput(data: string): void {
@@ -153,18 +167,22 @@ function onOutput(data: string): void {
     setAvastha('working')
   }
 
+  // Avastha silence — 4s no output → idle
   if (silenceTimer) clearTimeout(silenceTimer)
   silenceTimer = setTimeout(() => {
     if (currentAvastha === 'working') setAvastha('idle')
   }, SILENCE_MS)
 
+  // Prompt-ready silence fallback — 1.5s of no output means Claude is at '> '.
+  // This fires even when the regex below misses due to residual escape codes.
+  if (promptSilenceTimer) clearTimeout(promptSilenceTimer)
+  promptSilenceTimer = setTimeout(markPromptReady, 1500)
+
   const plain = stripAnsi(data)
 
-  // Claude Code shows '> ' (or just '>') when waiting for input.
-  // This is the reliable signal that it is ready to receive the next aadesh.
-  if (/(?:^|\r?\n)\s*>\s*(?:\r?\n|$)/.test(plain)) {
-    promptReady = true
-    if (aadeshQueue.length > 0) setTimeout(flushAadesh, 80)
+  // Direct pattern detection (faster path, fires before 1.5s when regex matches)
+  if (/(?:^|[\r\n])\s*>\s*$/.test(plain.trimEnd())) {
+    markPromptReady()
   }
 
   // Detect tool-permission prompts
@@ -283,8 +301,9 @@ export function drainInbox(): void {
 export function stopChanakya(): void {
   inboxWatcher?.close()
   inboxWatcher = null
-  if (silenceTimer)  { clearTimeout(silenceTimer);  silenceTimer  = null }
-  if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null }
+  if (silenceTimer)        { clearTimeout(silenceTimer);        silenceTimer        = null }
+  if (watchdogTimer)       { clearTimeout(watchdogTimer);       watchdogTimer       = null }
+  if (promptSilenceTimer)  { clearTimeout(promptSilenceTimer);  promptSilenceTimer  = null }
   removeDataListener('chanakya', onOutput)
   promptReady = false
   aadeshQueue.length = 0
