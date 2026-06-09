@@ -142,8 +142,8 @@ All renderer↔main communication through `window.takshashila`:
 | 2 | ✅ Done | Sabha Layer | File structure, mailboxes, router, itihas |
 | 3 | ✅ Done | Chanakya | GOD agent, Stop-loop, Aadesh bar, Anumati queue |
 | 4 | ✅ Done | Hook Server | Named pipe, cth-hook shim, avastha updates |
-| 5 | 🔲 Next | Court Floor | Pixi.js scene, tiled map, avatar sprites, camera |
-| 6 | 🔲 | Animations | Lamp overlay, scroll arc, avatar walk + A* |
+| 5 | ✅ Done | Court Floor | Pixi.js scene, tiled map, avatar sprites, camera |
+| 6 | 🔲 Next | Animations | Lamp overlay, scroll arc, avatar walk + A* |
 | 7 | 🔲 | Detail Panel | Terminal/Files/Git/Smriti tabs, CodeMirror |
 | 8 | 🔲 | Polish | Onboarding wizard, Add Shishya flow, search panels |
 | 9 | 🔲 | Packaging | electron-builder, NSIS installer, README |
@@ -173,6 +173,19 @@ Rules:
 - The shim requires `node` on PATH.
 - Avastha map: SessionStart/Stop → idle, UserPromptSubmit/PreToolUse/PostToolUse → working. Stop clears lastKriya.
 - Single write path: hook → identity.json → file watcher → renderer. Never double-send to the renderer.
+
+## Court Floor (M5)
+
+Pixi.js v7 scene in `src/renderer/src/scene/court/`. All art is procedural — chunky-rect pixel art baked to NEAREST-scaled textures, zero external assets.
+
+- `palette.ts` — `cssColor()` reads design tokens from CSS at runtime (Pixi needs numbers; never hardcode). `ROBE_COLORS` gives each agent an identity color from the terminal ANSI palette.
+- `textures.ts` — floor tiles (3 seeded variants), dais, desk, 8×10 avatar map. `PX = 4` art-pixel size, `TILE = 32`.
+- `Avatar.ts` — sprite + avastha dot + name label + gold selection ring; `pointertap` → select.
+- `Camera.ts` — drag-pan (5px threshold so avatar taps survive), wheel-zoom toward cursor, clamp 0.5–2.5×, `fit()` on first layout.
+- `CourtScene.ts` — owns the Application; world 1216×800; fixed `POSITIONS` for the cast, overflow row at y=700 for added agents. Floor is `cacheAsBitmap`.
+- `components/CourtFloor/index.tsx` — React wrapper; scene mounts once, `updateAgents`/`setSelected` pushed via effects. Selection state lives in App.tsx and syncs both ways (cards ↔ avatars).
+
+Renderer types: `src/renderer/src/env.d.ts` declares `window.takshashila` — keep it mirrored with `src/preload/index.ts`.
 
 ## Chanakya PTY — Lessons Learned
 
