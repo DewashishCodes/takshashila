@@ -174,16 +174,21 @@ Rules:
 - Avastha map: SessionStart/Stop → idle, UserPromptSubmit/PreToolUse/PostToolUse → working. Stop clears lastKriya.
 - Single write path: hook → identity.json → file watcher → renderer. Never double-send to the renderer.
 
-## Court Floor (M5)
+## Court Floor (M5 + visual overhaul)
 
-Pixi.js v7 scene in `src/renderer/src/scene/court/`. All art is procedural — chunky-rect pixel art baked to NEAREST-scaled textures, zero external assets.
+Pixi.js v7 scene in `src/renderer/src/scene/court/`. All art is procedural — chunky-rect pixel art (`PX = 4`) baked to NEAREST textures, zero external assets. CSP note: `@pixi/unsafe-eval` is imported at the top of CourtScene.ts because our CSP forbids `new Function` — never remove it.
 
-- `palette.ts` — `cssColor()` reads design tokens from CSS at runtime (Pixi needs numbers; never hardcode). `ROBE_COLORS` gives each agent an identity color from the terminal ANSI palette.
-- `textures.ts` — floor tiles (3 seeded variants), dais, desk, 8×10 avatar map. `PX = 4` art-pixel size, `TILE = 32`.
-- `Avatar.ts` — sprite + avastha dot + name label + gold selection ring; `pointertap` → select.
-- `Camera.ts` — drag-pan (5px threshold so avatar taps survive), wheel-zoom toward cursor, clamp 0.5–2.5×, `fit()` on first layout.
-- `CourtScene.ts` — owns the Application; world 1216×800; fixed `POSITIONS` for the cast, overflow row at y=700 for added agents. Floor is `cacheAsBitmap`.
-- `components/CourtFloor/index.tsx` — React wrapper; scene mounts once, `updateAgents`/`setSelected` pushed via effects. Selection state lives in App.tsx and syncs both ways (cards ↔ avatars).
+- `layout.ts` — **single source of truth for all coordinates.** `DESK_POSITIONS` (all 7 agents), `buildTileGrid()` (38×25: floor variants, perimeter, paths, kund, grass, platform), chamber wall cells, landmarks (TREE, ENTRANCE, KUND, RANGOLI, PILLARS), `DECORATIONS`. New scene work imports from here — no magic numbers.
+- `palette.ts` — `cssColor()` reads design tokens at runtime; `ROBE_COLORS` per agent; `shade()`.
+- `textures.ts` — tile set + furniture (desk/stool/bookshelf/pillar/wall) + desk items + decorations + avatar.
+- `Avatar.ts` — sprite + avastha dot + label + selection ring + `setFlip()` for glances.
+- `Camera.ts` — tweened: `intro()` (entrance → fit, 1.5s), `panTo()` (400ms ease-out on selection), wheel-zoom 0.8–1.4 relaxed to fit-scale. User input cancels tweens.
+- `LampOverlay.ts` — per-desk glow by avastha (working = 1.5s sine pulse, vighna = out).
+- `ScrollAnim.ts` — sandesh arc (80px over furniture, trail, unfurl). `'samrat'` maps to ENTRANCE.
+- `Ambient.ts` — leaves, kund ripples, torch flicker, idle glances.
+- `Minimap.ts` — screen-space, bottom-left, robe-colored dots.
+- `CourtScene.ts` — 8 ordered layers: floor → ground → furniture → avatars → desk items → glows → canopy → UI. Furniture built up-front from layout, not on agent load.
+- `components/CourtFloor/index.tsx` — React wrapper; subscribes `onSandesh` → `playScroll`; chanakya idle→working transition fires a samrat scroll from the entrance. Scene errors render an inline panel, never blank the app.
 
 Renderer types: `src/renderer/src/env.d.ts` declares `window.takshashila` — keep it mirrored with `src/preload/index.ts`.
 
