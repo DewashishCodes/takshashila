@@ -37,7 +37,7 @@ export function loadConfig(): HarnessConfig {
   } catch {
     _config = defaults()
   }
-  return _config
+  return _config ?? defaults()
 }
 
 export function getConfig(): HarnessConfig {

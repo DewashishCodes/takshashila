@@ -2,10 +2,11 @@ import { ipcMain, WebContents } from 'electron'
 import { join } from 'path'
 import {
   existsSync, mkdirSync, writeFileSync, readFileSync,
-  readdirSync, unlinkSync, watch, FSWatcher
+  readdirSync, unlinkSync, appendFileSync, watch, FSWatcher
 } from 'fs'
 import { writeFile, readFile, mkdir } from 'fs/promises'
 import type { HarnessConfig } from './config'
+import { ensureHookSettings, type HookEvent } from './hooks'
 
 // ─── Types (mirrored in preload) ──────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ interface AgentIdentity {
   persona: string
   kshetra: string
   avastha: 'idle' | 'working' | 'processing' | 'vighna' | 'siddhi'
+  lastKriya?: string
 }
 
 interface Sandesh {
@@ -97,7 +99,6 @@ export async function initSabha(home: string): Promise<void> {
   }
 
   for (const seed of AGENT_SEEDS) {
-    const agentDir = p.agentDir(seed.id)
     mkdirSync(p.inbox(seed.id),     { recursive: true })
     mkdirSync(p.outbox(seed.id),    { recursive: true })
     mkdirSync(p.workspace(seed.id), { recursive: true })
@@ -109,7 +110,9 @@ export async function initSabha(home: string): Promise<void> {
     if (!existsSync(p.smriti(seed.id))) {
       writeFileSync(p.smriti(seed.id), `# ${seed.name} — Smriti\n\n`, 'utf8')
     }
-    void agentDir
+
+    // Hook wiring: .claude/settings.json in each workspace points at the shim
+    ensureHookSettings(p.workspace(seed.id), home)
   }
 
   appendItihas({ timestamp: new Date().toISOString(), event: 'sabha:init', payload: { home } })
@@ -119,9 +122,7 @@ export async function initSabha(home: string): Promise<void> {
 
 function appendItihas(entry: ItihasEntry): void {
   try {
-    const line = JSON.stringify(entry) + '\n'
-    const fs = require('fs')
-    fs.appendFileSync(p.itihas(), line, 'utf8')
+    appendFileSync(p.itihas(), JSON.stringify(entry) + '\n', 'utf8')
   } catch { /* non-fatal */ }
 }
 
@@ -172,6 +173,40 @@ function readAnumatiItems(): AnumatiItem[] {
   } catch { return [] }
 }
 
+// ─── Hook events → avastha ────────────────────────────────────────────────────
+// Lifecycle events from Claude Code (via the cth-hook shim) drive accurate
+// agent states. Writing identity.json triggers the file watcher, which pushes
+// the update (including lastKriya) to the renderer — single source of truth.
+
+const HOOK_AVASTHA: Record<string, AgentIdentity['avastha'] | undefined> = {
+  SessionStart:     'idle',
+  UserPromptSubmit: 'working',
+  PreToolUse:       'working',
+  PostToolUse:      'working',
+  Stop:             'idle'
+}
+
+export function applyHookEvent(evt: HookEvent): void {
+  const avastha = HOOK_AVASTHA[evt.event]
+  appendItihas({
+    timestamp: evt.timestamp,
+    event: `hook:${evt.event}`,
+    agentId: evt.agentId,
+    payload: evt.toolName ? { toolName: evt.toolName } : undefined
+  })
+  if (!avastha) return
+
+  try {
+    const idFile = p.identity(evt.agentId)
+    if (!existsSync(idFile)) return
+    const identity = JSON.parse(readFileSync(idFile, 'utf8')) as AgentIdentity
+    identity.avastha = avastha
+    if (evt.toolName) identity.lastKriya = evt.toolName
+    if (evt.event === 'Stop') identity.lastKriya = undefined
+    writeFileSync(idFile, JSON.stringify(identity, null, 2), 'utf8')
+  } catch { /* non-fatal */ }
+}
+
 // ─── Watchers ─────────────────────────────────────────────────────────────────
 
 const watchers: FSWatcher[] = []
@@ -206,7 +241,11 @@ function startWatchers(getSender: () => WebContents | null): void {
         if (!agent) return
         const sender = getSender()
         if (sender && !sender.isDestroyed()) {
-          const update: AvashtaUpdate = { agentId: seed.id, avastha: agent.avastha }
+          const update: AvashtaUpdate = {
+            agentId: seed.id,
+            avastha: agent.avastha,
+            lastKriya: agent.lastKriya
+          }
           sender.send('sabha:avastha-change', update)
         }
       })

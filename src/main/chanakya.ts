@@ -292,6 +292,16 @@ function createAnumati(context: string): void {
   } catch { /* non-fatal */ }
 }
 
+// ─── Hook-driven Stop-loop ────────────────────────────────────────────────────
+// Fired by index.ts when the hook server receives a Stop event from Chanakya's
+// Claude Code session. This is the authoritative "finished responding" signal —
+// more reliable than output-silence heuristics, which remain as fallback.
+
+export function notifyChanakyaStop(): void {
+  markPromptReady()
+  setTimeout(processInbox, 100)  // pick up anything that arrived while working
+}
+
 // ─── Cleanup ──────────────────────────────────────────────────────────────────
 
 export function drainInbox(): void {

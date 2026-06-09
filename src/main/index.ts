@@ -3,10 +3,11 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerPtyHandlers, killAllSessions } from './pty'
 import { loadConfig, getConfig, registerConfigHandlers } from './config'
-import { initSabha, closeSabhaWatchers, registerSabhaHandlers } from './sabha'
+import { initSabha, closeSabhaWatchers, registerSabhaHandlers, applyHookEvent } from './sabha'
 import { registerFsHandlers } from './fs'
 import { registerGitHandlers } from './git'
-import { startChanakya, stopChanakya, drainInbox, registerChanakyaHandlers } from './chanakya'
+import { startChanakya, stopChanakya, drainInbox, notifyChanakyaStop, registerChanakyaHandlers } from './chanakya'
+import { startHookServer, stopHookServer, onHook } from './hooks'
 
 let mainWebContents: WebContents | null = null
 
@@ -57,6 +58,11 @@ app.whenReady().then(async () => {
   })
 
   const config = loadConfig()
+
+  // Hook server must start BEFORE initSabha (which writes per-agent hook
+  // settings) and before any PTY spawn (which injects the pipe path into env)
+  startHookServer(config.sabhaHome)
+
   await initSabha(config.sabhaHome)
 
   const getSender = (): WebContents | null => mainWebContents
@@ -67,6 +73,13 @@ app.whenReady().then(async () => {
   registerFsHandlers(getConfig)
   registerGitHandlers(getConfig)
   registerChanakyaHandlers()
+
+  // Hook events: lifecycle signals from Claude Code sessions → avastha + itihas.
+  // Chanakya's Stop event also drives the Stop-loop (flush queued aadesh).
+  onHook((evt) => {
+    applyHookEvent(evt)
+    if (evt.event === 'Stop' && evt.agentId === 'chanakya') notifyChanakyaStop()
+  })
 
   // Boot Chanakya — persistent claude session starts here
   startChanakya(config, getSender)
@@ -82,6 +95,7 @@ app.on('before-quit', () => {
   stopChanakya()
   killAllSessions()
   closeSabhaWatchers()
+  stopHookServer()
 })
 
 app.on('window-all-closed', () => {

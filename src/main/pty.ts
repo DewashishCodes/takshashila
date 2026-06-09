@@ -1,6 +1,7 @@
 import { ipcMain, WebContents } from 'electron'
 import * as pty from 'node-pty'
 import { platform } from 'os'
+import { getHookPipePath } from './hooks'
 
 interface PtySession {
   process: pty.IPty
@@ -32,7 +33,14 @@ export function spawnSession(
     cols: opts.cols ?? 220,
     rows: opts.rows ?? 50,
     cwd: opts.cwd || process.env.USERPROFILE || process.env.HOME || 'C:\\',
-    env: { ...process.env, ...opts.env } as Record<string, string>
+    env: {
+      ...process.env,
+      // Every session can reach the hook server and knows who it is —
+      // the cth-hook shim reads both of these
+      TAKSHASHILA_HOOK_PIPE: getHookPipePath(),
+      CLAUDE_CODE_AGENT_ID: agentId,
+      ...opts.env
+    } as Record<string, string>
   })
 
   proc.onData((data) => {
