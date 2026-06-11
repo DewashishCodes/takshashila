@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { CourtScene } from '../../scene/court/CourtScene'
+import { loadCourtAssets } from '../../scene/court/assets'
 
 interface Agent {
   id: string
@@ -20,26 +21,43 @@ export default function CourtFloor({ agents, selectedId, onSelect }: Props): Rea
   const sceneRef = useRef<CourtScene | null>(null)
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
+  // latest props, for the async scene mount to catch up on
+  const agentsRef = useRef(agents)
+  agentsRef.current = agents
+  const selectedIdRef = useRef(selectedId)
+  selectedIdRef.current = selectedId
   const [sceneError, setSceneError] = React.useState<string | null>(null)
 
   // Mount the Pixi scene once. A scene failure must never take down the
   // whole React tree — degrade to a visible error instead.
   useEffect(() => {
     if (!hostRef.current) return
+    const host = hostRef.current
     let scene: CourtScene | null = null
     let unsubSandesh: (() => void) | null = null
-    try {
-      scene = new CourtScene(hostRef.current, (id) => onSelectRef.current(id))
-      sceneRef.current = scene
-      // sandesh between agents → scroll arcs between their desks
-      unsubSandesh = window.takshashila.sabha.onSandesh((msg) => {
-        sceneRef.current?.playScroll(msg.from, msg.to)
+    let cancelled = false
+
+    // sprite sheets + tilesets load async; the scene mounts when they're in
+    loadCourtAssets()
+      .then((assets) => {
+        if (cancelled) return
+        scene = new CourtScene(host, (id) => onSelectRef.current(id), assets)
+        sceneRef.current = scene
+        // catch up on state that arrived while assets were loading
+        scene.updateAgents(agentsRef.current)
+        if (selectedIdRef.current) scene.setSelected(selectedIdRef.current)
+        // sandesh between agents → scroll arcs between their desks
+        unsubSandesh = window.takshashila.sabha.onSandesh((msg) => {
+          sceneRef.current?.playScroll(msg.from, msg.to)
+        })
       })
-    } catch (err) {
-      console.error('[CourtFloor] scene failed to start:', err)
-      setSceneError((err as Error).message ?? String(err))
-    }
+      .catch((err) => {
+        console.error('[CourtFloor] scene failed to start:', err)
+        if (!cancelled) setSceneError((err as Error).message ?? String(err))
+      })
+
     return () => {
+      cancelled = true
       unsubSandesh?.()
       scene?.destroy()
       sceneRef.current = null

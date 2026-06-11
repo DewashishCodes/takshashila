@@ -14,12 +14,15 @@ no large empty areas, every zone furnished, the world breathes through small
 ambient motion. Dusk lighting: dark warm stone, saffron-gold accents, oil lamps.
 
 Hard rules:
-- **Pixel art discipline** — hard edges, chunky rects, no gradients, no antialiasing.
-- **No external image assets** — everything is Pixi Graphics primitives, baked
-  to NEAREST-scaled textures (tiles/furniture) or drawn live (characters).
-- **Colors come from tokens** — scene code reads CSS variables via
-  `palette.cssColor()`. Scene-specific constants (robes, wood, water) are
-  defined once in `palette.ts` / `sprites.ts` and documented here.
+- **Pixel art discipline** — hard edges, no gradients, no antialiasing.
+  All textures `SCALE_MODES.NEAREST`.
+- **Real sprite-sheet assets** — floor, furniture, and characters come from
+  the packs in `/assets` (repo root), copied into `src/renderer/public/court/`
+  and sliced at runtime by `assets.ts`. Only tiny glow-coupled desk items
+  (lamp, manuscript, scroll pile, flying sandesh) remain procedural
+  (`textures.ts`), plus ambient NPCs/zones (`ambientObjects.ts`).
+- **Colors for UI/glows come from tokens** — scene code reads CSS variables
+  via `palette.cssColor()`.
 
 ## 2. Palette
 
@@ -39,24 +42,25 @@ Scene constants (not tokens):
 
 | Element | Hex |
 |---|---|
-| Water | `#2E5F7A` |
-| Grass | `#4A6B2F` |
-| Wood (desks/shelves/trunk) | `#6B4226` / `#4A2C17` |
-| Clay (pots, diyas) | `#9C5530` |
+| Clay (diyas) | `#9C5530` |
 | Palm leaf / parchment | `#D2B48C` / `#E8DCB8` |
 | Lamp glow | `#FFB340` |
-| Skin | `#C8956C` |
-| Eyes / outlines | `#2C1810` |
+| Platform tint | `#C9B896` (sandstone wash over plain stone tiles) |
+| Border tint | `#B0A898` |
+
+Floor/props/character colors are owned by the source sheets (Cainos
+"Pixel Art Top Down — Basic" + the character packs) — not configurable.
 
 ## 3. World & Layout
 
 - World: **1216×800** px = 38×25 tiles of **32px**. All coordinates live in
   `layout.ts` (`DESK_POSITIONS`, landmarks, decoration map) — no magic numbers
   in renderers.
-- Zones: Chanakya's chamber (top-right, walled, raised platform), main
-  courtyard with central banyan tree, left/center shishya desk wings, library
-  alcove (right, Vishnu Sharma), pillared entrance (bottom-center) with rangoli
-  and torches, 2×2 water kund (center-left).
+- Zones: Chanakya's chamber (top-right, brick-walled, tinted platform), main
+  courtyard with central tree, left/center shishya desk wings, library
+  alcove (right, Vishnu Sharma), entrance (bottom-center) with stone arch,
+  flanking shrines, rangoli and torches, round stone fountain + praying
+  statue as the kund (center-left).
 - Paths form a cross from the tree: south to the entrance, east-west spine,
   north-east branch to the chamber door.
 - Density rule: no large empty floor — pots, scroll piles, plants, stone
@@ -66,33 +70,55 @@ Scene constants (not tokens):
 
 1. Floor tiles (`cacheAsBitmap`)
 2. Ground decor — rangoli, kund ripples
-3. Furniture — desks, stools, shelves, walls, pillars, trunk, decorations
+3. Furniture — desks, shelves, walls, shrines, fountain, statue, decorations
 4. **Avatars**
 5. Desk items — lamps, manuscripts (in front of avatars)
 6. Lamp glows
-7. Tree canopy (over everything below)
+7. Canopy — tree sprite + entrance arch (over everything below)
 8. UI overlays — scroll flights, torch glows
 9. Minimap (screen-space, on the stage)
 
-## 5. Character sprites (`sprites.ts`)
+## 5. Character sprites (`assets.ts` → `Avatar.ts`)
 
-Drawn live with Graphics on a **16×28 one-pixel grid**, pivot at bottom-center
-of the feet, scaled **×2** into the world (32×56). Shared anatomy bottom→top:
-sandals (2×3px) → dhoti (~12×10) → uttariya shawl (~10×6, lighter) → head
-(8×8 rounded, skin `#C8956C`) → hair/turban. Face: 2 eye dots + 1 nose pixel.
+Each agent is a looping **idle animation** sliced from a sprite sheet in
+`src/renderer/public/court/char-<id>.png`. Geometry lives in
+`CHARACTERS` (assets.ts): frame size, frame count, world scale, foot anchor,
+visible height (status-dot placement), animation speed. Frames render through
+`AnimatedSprite`, anchor at the feet, drop-shadow ellipse underneath.
+Working/processing agents play their loop at **1.8×** speed and lean 1px in.
+Loop phases start at a random frame so the cast never breathes in unison.
 
-| Agent | Robe | Uttariya | Headwear | Distinguishing feature |
-|---|---|---|---|---|
-| Chanakya | ochre `#B8860B` | pale yellow `#F5DEB3`, asymmetric (wider left) | shaved + sikha topknot | short beard; palm-leaf scroll at right hand; wider head |
-| Aaruni | burnt orange `#CC5500` | cream `#FFFDD0` | terracotta turban | mud smudges on lower robe (the dam story) |
-| Nachiketa | deep blue `#1B3A6B` | white `#F8F8F8` | bare + dark topknot | smallest, 1px eager forward lean |
-| Gargi | magenta `#8B1A4A` | gold dupatta `#DAA520`, diagonal over left shoulder | dark hair bun | full-length robe; raised debater's hand (left) |
-| Bharadwaja | forest green `#2D5A27` | brown `#8B6914` | dark green turban | chisel in right hand |
-| Chandragupta | royal red `#8B0000` | saffron `#FF9933` | red turban, saffron stripe | tallest, stands straight |
-| Vishnu Sharma | aged white `#F5F5DC` | sage `#8FBC8F` | white topknot | hunched (+2px down, back ridge); open palm-leaf book in front |
+| Agent | Sheet (source pack) | Frames | Reads as |
+|---|---|---|---|
+| Chanakya | Necromancer (creativekind) | 8 × 160×128 | dark robed strategist with ember staff |
+| Aaruni | Kobold Warrior (free pack) | 6 × 148×96 | scrappy blue fighter — never drops a task |
+| Nachiketa | MainCharacter free pack | 10 × 192×128 | young dark seeker with blade |
+| Gargi | Gothicvania Bridge Heroine | 4 × 128×64 ×1.6 | red-clad debater |
+| Bharadwaja | Knight 2D Pixel Art | 7 × 96×84 ×1.3 | red-caped armored builder |
+| Chandragupta | Samurai 2D Pixel Art | 10 × 96×96 | white-haired swordsman, deploys fast |
+| Vishnu Sharma | Wizard Pack | 6 × 231×190 ×0.62 | old purple wizard, the storyteller |
 
-API: `drawSprite(agentId, container)` — the only way avatars are drawn.
-Unknown agents get a neutral fallback body.
+Unknown/overflow agents fall back to the Nachiketa sheet
+(`FALLBACK_CHARACTER`).
+
+## 5a. Tileset & furniture (`assets.ts`)
+
+Cainos "Pixel Art Top Down — Basic", 32px grid:
+
+- Floor `f0–f3`: clean interior crops of the stone slabs (`tiles-ground.png`),
+  offsets avoid the slabs' grout borders. `path` = dotted variants. `platform`
+  = plain stone tinted `#C9B896`. `border` = brick face from `tiles-wall.png`
+  tinted `#B0A898`. `grass` = plain + flower cells from `tiles-grass.png`
+  (no transition tiles — hard edges are accepted).
+- Chamber wall: 32×64 cap+face slice of the long wall (`tiles-wall.png`),
+  base on the cell row.
+- Props (`props.png`): bench = shishya desk, altar = Chanakya's desk,
+  cabinet = shelves, shrine = entrance pillars, fountain + statue = kund,
+  vase/pot/jug/barrel/chest/rock/cairn/gravestone/signpost = decorations
+  (cycled deterministically per `DECORATIONS` kind).
+- Plants (`plants.png`): tree2 ×1.5 = the central tree (canopy layer),
+  bush1–4 = plant decorations.
+- Struct (`struct.png`): stone arch ×1.4 over the entrance (canopy layer).
 
 ## 5b. Ambient zones (`ambientObjects.ts`)
 
@@ -107,8 +133,8 @@ Pure scenery + read-only reactions. Entry: `initAmbientObjects(stage, CourtLayou
 
 | Animation | Timing | Notes |
 |---|---|---|
-| Idle bob | 1px, 800ms cycle | staggered `index × 200ms` per agent — never in unison |
-| Working lean | +1px forward | replaces bob while working/processing |
+| Idle loop | per-sheet speed (≈5–7 fps) | random start frame per agent — never in unison |
+| Working | loop ×1.8 + 1px lean | while working/processing |
 | Idle glance | flip 1.5s, every 8–12s | random per agent, only when idle |
 | Lamp glow (working) | radius 20→28px, 1.5s sine | alpha 0.4 |
 | Lamp glow (idle / processing / siddhi / vighna) | static | alpha 0.1 / 0.3 / 0.2 / 0 |
@@ -144,6 +170,13 @@ Pure scenery + read-only reactions. Entry: `initAmbientObjects(stage, CourtLayou
 
 - `@pixi/unsafe-eval` is imported at the top of `CourtScene.ts` — our CSP has
   no `unsafe-eval` and Pixi's shader generator needs the patch. Never remove.
-- All baked textures use `SCALE_MODES.NEAREST` so zoom stays crisp.
+- `Assets.setPreferences({ preferWorkers: false })` in `assets.ts` — the CSP
+  (`script-src 'self'`) blocks the blob workers Pixi's loader spawns for
+  texture decoding. Never remove.
+- Asset load is async: `CourtFloor` awaits `loadCourtAssets()` before
+  constructing `CourtScene`, then replays the latest agents/selection.
+- `CourtScene.destroy` keeps base textures alive (`children: true` only) —
+  they live in the shared Assets cache and must survive a React remount.
+- All textures use `SCALE_MODES.NEAREST` so zoom stays crisp.
 - Furniture is built up-front from `layout.ts` (court looks furnished before
   agents load); avatars attach when Sabha state arrives.

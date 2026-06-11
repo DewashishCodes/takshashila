@@ -9,3 +9,7 @@ out/
 *.log
 npm-debug.log*
 release/
+
+# raw art packs (curated copies live in src/renderer/public/court)
+assets/
+*.tsbuildinfo

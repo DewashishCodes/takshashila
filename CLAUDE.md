@@ -178,18 +178,19 @@ Rules:
 
 **Visual design reference: `design.md` (repo root) — keep it updated with any scene/sprite/animation change.**
 
-Pixi.js v7 scene in `src/renderer/src/scene/court/`. All art is procedural — chunky-rect pixel art (`PX = 4`) baked to NEAREST textures, zero external assets. Character sprites are drawn live in `sprites.ts` (16×28 grid, ×2 scale, per-character anatomy via `drawSprite(agentId, container)`). CSP note: `@pixi/unsafe-eval` is imported at the top of CourtScene.ts because our CSP forbids `new Function` — never remove it.
+Pixi.js v7 scene in `src/renderer/src/scene/court/`. Art comes from real sprite sheets in `src/renderer/public/court/` (sliced at runtime by `assets.ts`): Cainos "Pixel Art Top Down — Basic" for floor/walls/props/plants, one idle sheet per agent for characters. Source packs live in `/assets` at the repo root. Only tiny glow-coupled desk items + the flying sandesh stay procedural (`textures.ts`). CSP notes: `@pixi/unsafe-eval` is imported at the top of CourtScene.ts because our CSP forbids `new Function`, and `assets.ts` sets `Assets.setPreferences({ preferWorkers: false })` because the CSP blocks Pixi's blob workers — never remove either.
 
 - `layout.ts` — **single source of truth for all coordinates.** `DESK_POSITIONS` (all 7 agents), `buildTileGrid()` (38×25: floor variants, perimeter, paths, kund, grass, platform), chamber wall cells, landmarks (TREE, ENTRANCE, KUND, RANGOLI, PILLARS), `DECORATIONS`. New scene work imports from here — no magic numbers.
-- `palette.ts` — `cssColor()` reads design tokens at runtime; `ROBE_COLORS` per agent; `shade()`.
-- `textures.ts` — tile set + furniture (desk/stool/bookshelf/pillar/wall) + desk items + decorations + avatar.
-- `Avatar.ts` — sprite + avastha dot + label + selection ring + `setFlip()` for glances.
+- `assets.ts` — loads + slices all sheets (`loadCourtAssets(): Promise<CourtAssets>`, awaited by CourtFloor before the scene is constructed). `CHARACTERS` maps agent id → frame geometry/scale/anchor. All pixel rects live here only.
+- `palette.ts` — `cssColor()` reads design tokens at runtime; `ROBE_COLORS` per agent (minimap dots); `shade()`.
+- `textures.ts` — procedural leftovers: manuscript, lamp, scroll pile, flying sandesh.
+- `Avatar.ts` — AnimatedSprite idle loop (×1.8 speed while working) + avastha dot + label + selection ring + `setFlip()` for glances.
 - `Camera.ts` — tweened: `intro()` (entrance → fit, 1.5s), `panTo()` (400ms ease-out on selection), wheel-zoom 0.8–1.4 relaxed to fit-scale. User input cancels tweens.
 - `LampOverlay.ts` — per-desk glow by avastha (working = 1.5s sine pulse, vighna = out).
 - `ScrollAnim.ts` — sandesh arc (80px over furniture, trail, unfurl). `'samrat'` maps to ENTRANCE.
 - `Ambient.ts` — leaves, kund ripples, torch flicker, idle glances.
 - `Minimap.ts` — screen-space, bottom-left, robe-colored dots.
-- `CourtScene.ts` — 8 ordered layers: floor → ground → furniture → avatars → desk items → glows → canopy → UI. Furniture built up-front from layout, not on agent load.
+- `CourtScene.ts` — 8 ordered layers: floor → ground → furniture → avatars → desk items → glows → canopy (tree + entrance arch) → UI. Furniture built up-front from layout, not on agent load. `destroy()` must NOT destroy base textures (shared Assets cache; React StrictMode remounts).
 - `components/CourtFloor/index.tsx` — React wrapper; subscribes `onSandesh` → `playScroll`; chanakya idle→working transition fires a samrat scroll from the entrance. Scene errors render an inline panel, never blank the app.
 
 Renderer types: `src/renderer/src/env.d.ts` declares `window.takshashila` — keep it mirrored with `src/preload/index.ts`.

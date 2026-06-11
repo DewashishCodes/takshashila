@@ -10,19 +10,18 @@ import { ScrollAnim } from './ScrollAnim'
 import { Ambient } from './Ambient'
 import { Minimap } from './Minimap'
 import { initAmbientObjects } from './ambientObjects'
-import { scenePalette, shade, type ScenePalette } from './palette'
+import { scenePalette, type ScenePalette } from './palette'
+import type { CourtAssets, PlantName } from './assets'
 import {
   buildTileGrid, DESK_POSITIONS, overflowSeat, type Seat,
-  DESK_OFFSET, LAMP_OFFSET, STOOL_OFFSET,
+  DESK_OFFSET, LAMP_OFFSET,
   TILE, WORLD_W, WORLD_H,
-  TREE, ENTRANCE, RANGOLI, PILLARS,
+  TREE, ENTRANCE, KUND_CENTER, RANGOLI, PILLARS,
   CHAMBER_WALL, CHANAKYA_SHELF, LIBRARY_SHELVES, DECORATIONS
 } from './layout'
 import {
-  makeTileSet, makeDeskTexture, makeStoolTexture, makeBookshelfTexture,
-  makePillarTexture, makeWallTexture, makeManuscriptTexture, makeLampTexture,
-  makePotTexture, makeScrollPileTexture, makeStoneMarkTexture, makePlantTexture,
-  makeTrunkTexture, makeScrollSpriteTexture
+  makeManuscriptTexture, makeLampTexture, makeScrollPileTexture,
+  makeScrollSpriteTexture
 } from './textures'
 
 interface SceneAgent {
@@ -36,11 +35,12 @@ export class CourtScene {
   private world: Container
   private camera: Camera
   private pal: ScenePalette
+  private assets: CourtAssets
 
   // render layers, bottom → top
   private floorLayer = new Container()
   private groundLayer = new Container()    // ripples, rangoli
-  private furnitureLayer = new Container() // desks, shelves, walls, pillars, trunk, decor
+  private furnitureLayer = new Container() // desks, shelves, walls, pillars, decor
   private avatarLayer = new Container()
   private deskItemLayer = new Container()  // lamps, manuscripts — in front of avatars
   private glowLayer: LampOverlay
@@ -59,16 +59,15 @@ export class CourtScene {
   private agentIds: string[] = []
   private selectedId: string | null = null
 
-  private deskTex: Texture
-  private stoolTex: Texture
   private manuscriptTex: Texture
   private lampTex: Texture
 
   private onSelect: (id: string | null) => void
 
-  constructor(host: HTMLElement, onSelect: (id: string | null) => void) {
+  constructor(host: HTMLElement, onSelect: (id: string | null) => void, assets: CourtAssets) {
     this.onSelect = onSelect
     this.pal = scenePalette()
+    this.assets = assets
 
     this.app = new Application({
       background: this.pal.stone,
@@ -89,10 +88,8 @@ export class CourtScene {
       this.canopyLayer, this.uiLayer
     )
 
-    // shared textures
+    // small shared textures that stay procedural (tiny, glow-coupled)
     const r = this.app.renderer
-    this.deskTex = makeDeskTexture(r, this.pal)
-    this.stoolTex = makeStoolTexture(r, this.pal)
     this.manuscriptTex = makeManuscriptTexture(r)
     this.lampTex = makeLampTexture(r)
 
@@ -100,6 +97,7 @@ export class CourtScene {
     this.buildStructures()
     this.buildDecorations()
     this.buildTree()
+    this.buildKund()
     this.buildRangoli()
     this.buildSeating()
 
@@ -154,14 +152,15 @@ export class CourtScene {
   // ─── World construction ──────────────────────────────────────────────────
 
   private buildFloor(): void {
-    const tiles = makeTileSet(this.app.renderer, this.pal)
     const grid = buildTileGrid()
     for (let rIdx = 0; rIdx < grid.length; rIdx++) {
       for (let c = 0; c < grid[rIdx].length; c++) {
         const kind = grid[rIdx][c]
-        const variants = tiles[kind]
+        const variants = this.assets.tiles[kind]
         const t = new Sprite(variants[(rIdx * 7 + c * 13) % variants.length])
         t.position.set(c * TILE, rIdx * TILE)
+        if (kind === 'platform') t.tint = this.assets.platformTint
+        if (kind === 'border') t.tint = 0xb0a898
         this.floorLayer.addChild(t)
       }
     }
@@ -169,52 +168,50 @@ export class CourtScene {
   }
 
   private buildStructures(): void {
-    const r = this.app.renderer
-
-    // chamber low wall
-    const wallTex = makeWallTexture(r, this.pal)
+    // chamber low wall — stone cap + brick face, base on the cell row
     for (const cell of CHAMBER_WALL) {
-      const w = new Sprite(wallTex)
-      w.position.set(cell.c * TILE, cell.r * TILE + TILE / 2)
+      const w = new Sprite(this.assets.wallSegment)
+      w.anchor.set(0, 1)
+      w.position.set(cell.c * TILE, cell.r * TILE + TILE)
       this.furnitureLayer.addChild(w)
     }
 
-    // chanakya's bookshelf (behind his desk)
-    const shelfTall = makeBookshelfTexture(r, true)
-    const chShelf = new Sprite(shelfTall)
-    chShelf.anchor.set(0.5, 1)
-    chShelf.position.set(CHANAKYA_SHELF.x, CHANAKYA_SHELF.y + 40)
-    this.furnitureLayer.addChild(chShelf)
-
-    // library alcove shelves
-    const shelfShort = makeBookshelfTexture(r, false)
-    for (let i = 0; i < LIBRARY_SHELVES.length; i++) {
-      const s = new Sprite(i === 0 ? shelfTall : shelfShort)
+    // chanakya's shelf (behind his desk) + library alcove shelves
+    const shelfSpots = [CHANAKYA_SHELF, ...LIBRARY_SHELVES]
+    for (const spot of shelfSpots) {
+      const s = new Sprite(this.assets.props.cabinet)
       s.anchor.set(0.5, 1)
-      s.position.set(LIBRARY_SHELVES[i].x, LIBRARY_SHELVES[i].y + 50)
+      s.scale.set(1.2)
+      s.position.set(spot.x, spot.y + 50)
       this.furnitureLayer.addChild(s)
     }
 
-    // entrance pillars
-    const pillarTex = makePillarTexture(r, this.pal)
+    // entrance: standing shrines flank the gap, stone arch over it
     for (const p of PILLARS) {
-      const s = new Sprite(pillarTex)
+      const s = new Sprite(this.assets.props.shrine)
       s.anchor.set(0.5, 1)
       s.position.set(p.x, p.y)
       this.furnitureLayer.addChild(s)
     }
+    const arch = new Sprite(this.assets.arch)
+    arch.anchor.set(0.5, 1)
+    arch.scale.set(1.4)
+    arch.position.set(ENTRANCE.x, ENTRANCE.y + 24)
+    this.canopyLayer.addChild(arch) // agents/scrolls pass under it
   }
 
   private buildDecorations(): void {
-    const r = this.app.renderer
-    const tex = {
-      pot: makePotTexture(r),
-      scrolls: makeScrollPileTexture(r),
-      stone: makeStoneMarkTexture(r, this.pal),
-      plant: makePlantTexture(r)
+    // deterministic variety: cycle through textures per decor kind
+    const variants: Record<string, Texture[]> = {
+      pot: [this.assets.props.vase, this.assets.props.pot, this.assets.props.jug, this.assets.props.barrel],
+      scrolls: [makeScrollPileTexture(this.app.renderer), this.assets.props.chest],
+      stone: [this.assets.props.rock, this.assets.props.cairn, this.assets.props.gravestone, this.assets.props.signpost],
+      plant: (['bush1', 'bush2', 'bush3', 'bush4'] as PlantName[]).map((b) => this.assets.plants[b])
     }
+    const counters: Record<string, number> = { pot: 0, scrolls: 0, stone: 0, plant: 0 }
     for (const d of DECORATIONS) {
-      const s = new Sprite(tex[d.kind])
+      const list = variants[d.kind]
+      const s = new Sprite(list[counters[d.kind]++ % list.length])
       s.anchor.set(0.5, 1)
       s.position.set(d.x, d.y)
       this.furnitureLayer.addChild(s)
@@ -222,33 +219,26 @@ export class CourtScene {
   }
 
   private buildTree(): void {
-    // trunk in furniture layer, canopy in its own top layer
-    const trunk = new Sprite(makeTrunkTexture(this.app.renderer))
-    trunk.anchor.set(0.5, 1)
-    trunk.position.set(TREE.x, TREE.y + 24)
-    this.furnitureLayer.addChild(trunk)
+    // one full tree — canopy layer so agents pass beneath its crown
+    const tree = new Sprite(this.assets.plants.tree2)
+    tree.anchor.set(0.5, 1)
+    tree.scale.set(1.5)
+    tree.position.set(TREE.x, TREE.y + 28)
+    this.canopyLayer.addChild(tree)
+  }
 
-    const canopy = new Graphics()
-    const leaf = 0x2f5a22
-    canopy.beginFill(shade(leaf, 0.85))
-    canopy.drawCircle(TREE.x - 28, TREE.y - 38, 34)
-    canopy.endFill()
-    canopy.beginFill(shade(leaf, 0.95))
-    canopy.drawCircle(TREE.x + 26, TREE.y - 42, 38)
-    canopy.endFill()
-    canopy.beginFill(leaf)
-    canopy.drawCircle(TREE.x - 4, TREE.y - 62, 40)
-    canopy.endFill()
-    canopy.beginFill(shade(leaf, 1.25))
-    canopy.drawCircle(TREE.x + 8, TREE.y - 74, 24)
-    canopy.endFill()
-    // highlight pixels
-    canopy.beginFill(shade(leaf, 1.5))
-    canopy.drawRect(TREE.x - 20, TREE.y - 80, 4, 4)
-    canopy.drawRect(TREE.x + 24, TREE.y - 60, 4, 4)
-    canopy.drawRect(TREE.x - 40, TREE.y - 44, 4, 4)
-    canopy.endFill()
-    this.canopyLayer.addChild(canopy)
+  private buildKund(): void {
+    // the sacred pool is a round stone fountain from the props sheet
+    const fountain = new Sprite(this.assets.props.fountain)
+    fountain.anchor.set(0.5, 0.55)
+    fountain.position.set(KUND_CENTER.x, KUND_CENTER.y)
+    this.furnitureLayer.addChild(fountain)
+
+    // a praying statue watches over the water
+    const statue = new Sprite(this.assets.props.statue)
+    statue.anchor.set(0.5, 1)
+    statue.position.set(KUND_CENTER.x, KUND_CENTER.y - 52)
+    this.furnitureLayer.addChild(statue)
   }
 
   private buildRangoli(): void {
@@ -275,37 +265,32 @@ export class CourtScene {
     this.groundLayer.addChild(g)
   }
 
-  /** Desks, stools, manuscripts and lamps for the whole cast — built up front
+  /** Desks, manuscripts and lamps for the whole cast — built up front
    *  so the court looks furnished even before agents finish loading. */
   private buildSeating(): void {
-    const r = this.app.renderer
-    const chanakyaDesk = makeDeskTexture(r, this.pal, true)
-
     for (const [id, seat] of Object.entries(DESK_POSITIONS)) {
       this.seats.set(id, seat)
-
-      const desk = new Sprite(id === 'chanakya' ? chanakyaDesk : this.deskTex)
-      desk.anchor.set(0.5, 0)
-      desk.position.set(seat.x + DESK_OFFSET.x, seat.y + DESK_OFFSET.y)
-      this.furnitureLayer.addChild(desk)
-
-      const stool = new Sprite(this.stoolTex)
-      stool.anchor.set(0.5, 1)
-      stool.position.set(seat.x + STOOL_OFFSET.x, seat.y + STOOL_OFFSET.y)
-      this.furnitureLayer.addChild(stool)
-
-      const manuscript = new Sprite(this.manuscriptTex)
-      manuscript.anchor.set(0.5, 0.5)
-      manuscript.position.set(seat.x - 8, seat.y + DESK_OFFSET.y + 6)
-      this.deskItemLayer.addChild(manuscript)
-
-      const lamp = new Sprite(this.lampTex)
-      lamp.anchor.set(0.5, 1)
-      lamp.position.set(seat.x + LAMP_OFFSET.x, seat.y + LAMP_OFFSET.y + 4)
-      this.deskItemLayer.addChild(lamp)
-
-      this.glowLayer.addLamp(id, seat.x + LAMP_OFFSET.x, seat.y + LAMP_OFFSET.y)
+      this.placeDeskFurniture(id, seat)
     }
+  }
+
+  private placeDeskFurniture(id: string, seat: Seat): void {
+    const desk = new Sprite(id === 'chanakya' ? this.assets.props.altar : this.assets.props.bench)
+    desk.anchor.set(0.5, 0)
+    desk.position.set(seat.x + DESK_OFFSET.x, seat.y + DESK_OFFSET.y)
+    this.furnitureLayer.addChild(desk)
+
+    const manuscript = new Sprite(this.manuscriptTex)
+    manuscript.anchor.set(0.5, 0.5)
+    manuscript.position.set(seat.x - 8, seat.y + DESK_OFFSET.y + 10)
+    this.deskItemLayer.addChild(manuscript)
+
+    const lamp = new Sprite(this.lampTex)
+    lamp.anchor.set(0.5, 1)
+    lamp.position.set(seat.x + LAMP_OFFSET.x, seat.y + LAMP_OFFSET.y + 4)
+    this.deskItemLayer.addChild(lamp)
+
+    this.glowLayer.addLamp(id, seat.x + LAMP_OFFSET.x, seat.y + LAMP_OFFSET.y)
   }
 
   private seatFor(id: string): Seat {
@@ -313,12 +298,7 @@ export class CourtScene {
     if (!seat) {
       seat = overflowSeat(this.overflowCount++)
       this.seats.set(id, seat)
-      // late furniture for overflow agents
-      const desk = new Sprite(this.deskTex)
-      desk.anchor.set(0.5, 0)
-      desk.position.set(seat.x + DESK_OFFSET.x, seat.y + DESK_OFFSET.y)
-      this.furnitureLayer.addChild(desk)
-      this.glowLayer.addLamp(id, seat.x + LAMP_OFFSET.x, seat.y + LAMP_OFFSET.y)
+      this.placeDeskFurniture(id, seat) // late furniture for overflow agents
     }
     return seat
   }
@@ -332,7 +312,7 @@ export class CourtScene {
       let avatar = this.avatars.get(agent.id)
       if (!avatar) {
         const seat = this.seatFor(agent.id)
-        avatar = new Avatar(agent.id, agent.name, this.pal, (id) => this.onSelect(id))
+        avatar = new Avatar(agent.id, agent.name, this.pal, this.assets, (id) => this.onSelect(id))
         avatar.position.set(seat.x, seat.y)
         this.avatarLayer.addChild(avatar)
         this.avatars.set(agent.id, avatar)
@@ -370,7 +350,9 @@ export class CourtScene {
   destroy(): void {
     for (const fn of this.cleanups) { try { fn() } catch { /* already gone */ } }
     this.cleanups = []
-    this.app.destroy(true, { children: true, texture: true, baseTexture: true })
+    // children only — the base textures live in the shared Assets cache and
+    // must survive a React remount (StrictMode mounts the scene twice in dev)
+    this.app.destroy(true, { children: true })
     this.avatars.clear()
     this.seats.clear()
   }
