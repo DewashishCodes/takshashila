@@ -54,6 +54,18 @@ export const CHARACTERS: Record<string, CharacterDef> = {
 /** Overflow agents (added later via M8) reuse the seeker sheet */
 export const FALLBACK_CHARACTER = 'nachiketa'
 
+// Walk/run loops — same frame geometry as the idle sheet of the same agent.
+// nachiketa's pack ships no run sheet: his idle doubles as the walk loop.
+const WALK_SHEETS: Record<string, { url: string; frames: number; row: number }> = {
+  chanakya:      { url: 'court/char-chanakya.png',      frames: 8,  row: 1 },
+  aaruni:        { url: 'court/walk-aaruni.png',        frames: 8,  row: 0 },
+  nachiketa:     { url: 'court/char-nachiketa.png',     frames: 10, row: 0 },
+  gargi:         { url: 'court/walk-gargi.png',         frames: 7,  row: 0 },
+  bharadwaja:    { url: 'court/walk-bharadwaja.png',    frames: 8,  row: 0 },
+  chandragupta:  { url: 'court/walk-chandragupta.png',  frames: 16, row: 0 },
+  vishnu_sharma: { url: 'court/walk-vishnu_sharma.png', frames: 8,  row: 0 }
+}
+
 // ─── Prop + tile rectangles (source px) ───────────────────────────────────────
 
 const PROP_RECTS = {
@@ -82,7 +94,11 @@ const PLANT_RECTS = {
   bush1: { x: 92,  y: 188, w: 42,  h: 34 },
   bush2: { x: 152, y: 182, w: 52,  h: 40 },
   bush3: { x: 214, y: 178, w: 54,  h: 46 },
-  bush4: { x: 340, y: 184, w: 50,  h: 40 }
+  bush4: { x: 340, y: 184, w: 50,  h: 40 },
+  tuft1: { x: 0,   y: 384, w: 32,  h: 32 },
+  tuft2: { x: 32,  y: 384, w: 32,  h: 32 },
+  tuft3: { x: 64,  y: 416, w: 32,  h: 32 },
+  tuft4: { x: 96,  y: 448, w: 32,  h: 32 }
 } as const
 export type PlantName = keyof typeof PLANT_RECTS
 
@@ -114,31 +130,34 @@ export interface CourtAssets {
   plants: Record<PlantName, Texture>
   arch: Texture
   wallSegment: Texture
-  /** idle animation frames per agent id */
-  characters: Record<string, Texture[]>
+  /** animation frames per agent id */
+  characters: Record<string, { idle: Texture[]; walk: Texture[] }>
 }
 
 function slice(base: BaseTexture, x: number, y: number, w: number, h: number): Texture {
   return new Texture(base, new Rectangle(x, y, w, h))
 }
 
-function sliceRow(base: BaseTexture, def: CharacterDef): Texture[] {
-  const frames: Texture[] = []
-  for (let i = 0; i < def.frames; i++) {
-    frames.push(slice(base, i * def.frameW, def.row * def.frameH, def.frameW, def.frameH))
+function sliceRow(
+  base: BaseTexture, frameW: number, frameH: number, frames: number, row: number
+): Texture[] {
+  const out: Texture[] = []
+  for (let i = 0; i < frames; i++) {
+    out.push(slice(base, i * frameW, row * frameH, frameW, frameH))
   }
-  return frames
+  return out
 }
 
 export async function loadCourtAssets(): Promise<CourtAssets> {
   // CSP (script-src 'self') forbids the blob workers Pixi's loader prefers —
   // decode textures on the main thread instead
   Assets.setPreferences({ preferWorkers: false })
-  const urls = [
+  const urls = [...new Set([
     'court/tiles-ground.png', 'court/tiles-grass.png', 'court/tiles-wall.png',
     'court/props.png', 'court/plants.png', 'court/struct.png',
-    ...Object.values(CHARACTERS).map((c) => c.url)
-  ]
+    ...Object.values(CHARACTERS).map((c) => c.url),
+    ...Object.values(WALK_SHEETS).map((w) => w.url)
+  ])]
   const loaded = await Assets.load<Texture>(urls)
   const baseOf = (url: string): BaseTexture => {
     const tex = loaded[url]
@@ -181,9 +200,13 @@ export async function loadCourtAssets(): Promise<CourtAssets> {
     Object.entries(PLANT_RECTS).map(([k, r]) => [k, slice(plants, r.x, r.y, r.w, r.h)])
   ) as Record<PlantName, Texture>
 
-  const characters: Record<string, Texture[]> = {}
+  const characters: CourtAssets['characters'] = {}
   for (const [id, def] of Object.entries(CHARACTERS)) {
-    characters[id] = sliceRow(baseOf(def.url), def)
+    const w = WALK_SHEETS[id]
+    characters[id] = {
+      idle: sliceRow(baseOf(def.url), def.frameW, def.frameH, def.frames, def.row),
+      walk: sliceRow(baseOf(w.url), def.frameW, def.frameH, w.frames, w.row)
+    }
   }
 
   return {

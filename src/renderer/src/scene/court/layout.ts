@@ -146,7 +146,7 @@ export const LIBRARY_SHELVES = [
 
 // ─── Decorations — fill the floor so no area feels empty ─────────────────────
 
-export type DecorKind = 'pot' | 'scrolls' | 'stone' | 'plant'
+export type DecorKind = 'pot' | 'scrolls' | 'stone' | 'plant' | 'tree'
 
 export const DECORATIONS: Array<{ x: number; y: number; kind: DecorKind }> = [
   // along the left wall
@@ -174,5 +174,79 @@ export const DECORATIONS: Array<{ x: number; y: number; kind: DecorKind }> = [
   { x: 850, y: 680, kind: 'scrolls' },{ x: 350, y: 730, kind: 'stone' },
   // tree surroundings
   { x: 540, y: 330, kind: 'stone' },  { x: 720, y: 330, kind: 'scrolls' },
-  { x: 730, y: 450, kind: 'pot' }
+  { x: 730, y: 450, kind: 'pot' },
+  // corner trees on the grass patches (rendered in the canopy layer)
+  { x: 100, y: 145, kind: 'tree' },   { x: 88,  y: 756, kind: 'tree' },
+  { x: 1146, y: 750, kind: 'tree' },
+  // extra clutter — library stores, entrance flanks, courtyard gaps
+  { x: 1010, y: 540, kind: 'pot' },   { x: 1035, y: 555, kind: 'scrolls' },
+  { x: 905,  y: 640, kind: 'pot' },   { x: 545,  y: 460, kind: 'scrolls' },
+  { x: 680,  y: 620, kind: 'pot' },   { x: 420,  y: 560, kind: 'stone' },
+  { x: 760,  y: 560, kind: 'plant' }, { x: 300,  y: 440, kind: 'plant' },
+  { x: 160,  y: 230, kind: 'scrolls' },{ x: 870, y: 420, kind: 'pot' },
+  { x: 870,  y: 320, kind: 'plant' }, { x: 240,  y: 740, kind: 'pot' },
+  { x: 980,  y: 730, kind: 'plant' }, { x: 130,  y: 640, kind: 'plant' }
 ]
+
+// ─── Walkability + wander spots (M6) ─────────────────────────────────────────
+
+/** Arthashastra inscription wall (ambient zone) — also a walk obstacle */
+export const ARTHASHASTRA_WALL = { x: 1010, y: 210, w: 170, h: 220 }
+
+/** Idle agents stroll to these and back. All verified walkable. */
+export const WANDER_SPOTS: Seat[] = [
+  { x: 624, y: 500 },   // teaching circle edge, south of the tree
+  { x: 608, y: 596 },   // debate pit edge
+  { x: 336, y: 352 },   // kund east rim
+  { x: 608, y: 668 },   // rangoli
+  { x: 980, y: 540 },   // library aisle
+  { x: 976, y: 300 }    // outside the chamber door
+]
+
+/** True where an avatar may stand/walk. Derived from the tile grid plus
+ *  every furniture footprint placed by CourtScene. */
+export function buildWalkableGrid(): boolean[][] {
+  const tiles = buildTileGrid()
+  const w: boolean[][] = tiles.map((row) =>
+    row.map((kind) => kind !== 'border' && kind !== 'water')
+  )
+
+  // block all tiles intersecting a world-px rect
+  const blockRect = (x0: number, y0: number, x1: number, y1: number): void => {
+    const c0 = Math.max(0, Math.floor(x0 / TILE))
+    const c1 = Math.min(COLS - 1, Math.floor(x1 / TILE))
+    const r0 = Math.max(0, Math.floor(y0 / TILE))
+    const r1 = Math.min(ROWS - 1, Math.floor(y1 / TILE))
+    for (let r = r0; r <= r1; r++)
+      for (let c = c0; c <= c1; c++) w[r][c] = false
+  }
+
+  for (const cell of CHAMBER_WALL) w[cell.r][cell.c] = false
+
+  for (const seat of Object.values(DESK_POSITIONS)) {
+    // the desk slab below the seat (avatar tile itself stays walkable)
+    blockRect(seat.x - 30, seat.y + DESK_OFFSET.y, seat.x + 30, seat.y + DESK_OFFSET.y + 44)
+  }
+
+  blockRect(KUND_CENTER.x - 50, KUND_CENTER.y - 110, KUND_CENTER.x + 50, KUND_CENTER.y + 34) // fountain + statue
+  blockRect(TREE.x - 26, TREE.y - 10, TREE.x + 26, TREE.y + 28)                              // trunk
+  blockRect(ARTHASHASTRA_WALL.x, ARTHASHASTRA_WALL.y,
+            ARTHASHASTRA_WALL.x + ARTHASHASTRA_WALL.w, ARTHASHASTRA_WALL.y + ARTHASHASTRA_WALL.h)
+
+  const shelfSpots = [CHANAKYA_SHELF, ...LIBRARY_SHELVES]
+  for (const s of shelfSpots) blockRect(s.x - 22, s.y - 10, s.x + 22, s.y + 50)
+  for (const p of PILLARS) blockRect(p.x - 14, p.y - 28, p.x + 14, p.y)
+
+  for (const d of DECORATIONS) {
+    if (d.kind === 'tree') blockRect(d.x - 24, d.y - 12, d.x + 24, d.y)
+    else w[Math.floor((d.y - 8) / TILE)][Math.floor(d.x / TILE)] = false
+  }
+
+  // never wall off a desk or wander spot (decor may share the tile)
+  for (const seat of Object.values(DESK_POSITIONS)) {
+    w[Math.floor(seat.y / TILE)][Math.floor(seat.x / TILE)] = true
+  }
+  for (const s of WANDER_SPOTS) w[Math.floor(s.y / TILE)][Math.floor(s.x / TILE)] = true
+
+  return w
+}

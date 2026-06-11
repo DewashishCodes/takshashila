@@ -2,7 +2,7 @@ import { Container, Graphics, Text, TextStyle, Ticker } from 'pixi.js'
 import { shade } from './palette'
 import {
   buildTileGrid, DESK_POSITIONS, DECORATIONS, PILLARS, LIBRARY_SHELVES,
-  TREE, RANGOLI, KUND_CENTER, TILE, COLS, ROWS
+  TREE, RANGOLI, KUND_CENTER, TILE, COLS, ROWS, ARTHASHASTRA_WALL
 } from './layout'
 
 // Ambient content for the empty zones of the court. Pure scenery + read-only
@@ -150,7 +150,7 @@ function tickShloka(s: ShlokaState, deltaMS: number): void {
 
 // ─── Zone 2 — Arthashastra inscription wall ───────────────────────────────────
 
-const WALL_RECT = { x: 1010, y: 210, w: 170, h: 220 } // world px
+const WALL_RECT = ARTHASHASTRA_WALL // world px — owned by layout.ts
 
 function initArthashastraWall(layout: CourtLayout): void {
   const root = new Container()

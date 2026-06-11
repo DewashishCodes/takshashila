@@ -4,6 +4,7 @@
 import '@pixi/unsafe-eval'
 import { Application, Container, Graphics, Sprite, Texture } from 'pixi.js'
 import { Avatar } from './Avatar'
+import { Walker } from './Walk'
 import { Camera } from './Camera'
 import { LampOverlay } from './LampOverlay'
 import { ScrollAnim } from './ScrollAnim'
@@ -56,6 +57,8 @@ export class CourtScene {
   private scrollAnim: ScrollAnim
   private ambient: Ambient
   private minimap: Minimap
+  private walker: Walker
+  private spawnCount = 0
   private agentIds: string[] = []
   private selectedId: string | null = null
 
@@ -100,6 +103,8 @@ export class CourtScene {
     this.buildKund()
     this.buildRangoli()
     this.buildSeating()
+    this.walker = new Walker(this.seats)
+    this.avatarLayer.sortableChildren = true // y-sort while agents walk past each other
 
     // ambient zones: teaching circle, inscription wall, debate pit, scatter
     initAmbientObjects(this.world, {
@@ -144,8 +149,12 @@ export class CourtScene {
       this.glowLayer.update(dms)
       this.scrollAnim.update(dms)
       this.ambient.update(dms, this.avatars)
+      this.walker.update(dms, this.avatars)
       let i = 0
-      for (const avatar of this.avatars.values()) avatar.tick(this.elapsed, i++)
+      for (const avatar of this.avatars.values()) {
+        avatar.tick(this.elapsed, i++)
+        avatar.zIndex = avatar.y
+      }
     })
   }
 
@@ -208,13 +217,37 @@ export class CourtScene {
       stone: [this.assets.props.rock, this.assets.props.cairn, this.assets.props.gravestone, this.assets.props.signpost],
       plant: (['bush1', 'bush2', 'bush3', 'bush4'] as PlantName[]).map((b) => this.assets.plants[b])
     }
-    const counters: Record<string, number> = { pot: 0, scrolls: 0, stone: 0, plant: 0 }
+    const trees = [this.assets.plants.tree1, this.assets.plants.tree3]
+    const counters: Record<string, number> = { pot: 0, scrolls: 0, stone: 0, plant: 0, tree: 0 }
     for (const d of DECORATIONS) {
+      if (d.kind === 'tree') {
+        const t = new Sprite(trees[counters.tree++ % trees.length])
+        t.anchor.set(0.5, 1)
+        t.scale.set(1.2)
+        t.position.set(d.x, d.y + 12)
+        this.canopyLayer.addChild(t) // agents pass under the crown
+        continue
+      }
       const list = variants[d.kind]
       const s = new Sprite(list[counters[d.kind]++ % list.length])
       s.anchor.set(0.5, 1)
       s.position.set(d.x, d.y)
       this.furnitureLayer.addChild(s)
+    }
+
+    // grass tufts scattered over the grass patches (pure ground detail)
+    const tufts = (['tuft1', 'tuft2', 'tuft3', 'tuft4'] as PlantName[])
+      .map((t) => this.assets.plants[t])
+    const grid = buildTileGrid()
+    let n = 0
+    for (let rIdx = 0; rIdx < grid.length; rIdx++) {
+      for (let c = 0; c < grid[rIdx].length; c++) {
+        if (grid[rIdx][c] !== 'grass') continue
+        if (((rIdx * 31 + c * 17) % 10) > 3) continue // ~40% of grass tiles
+        const s = new Sprite(tufts[n++ % tufts.length])
+        s.position.set(c * TILE, rIdx * TILE)
+        this.groundLayer.addChild(s)
+      }
     }
   }
 
@@ -233,6 +266,17 @@ export class CourtScene {
     fountain.anchor.set(0.5, 0.55)
     fountain.position.set(KUND_CENTER.x, KUND_CENTER.y)
     this.furnitureLayer.addChild(fountain)
+
+    // water in the basin — the Ambient ripples play over this (uiLayer)
+    const water = new Graphics()
+    water.beginFill(0x2e5f7a, 0.75)
+    water.drawEllipse(KUND_CENTER.x, KUND_CENTER.y + 2, 34, 18)
+    water.endFill()
+    water.beginFill(0x9fd0e8, 0.35) // glints
+    water.drawRect(KUND_CENTER.x - 14, KUND_CENTER.y - 4, 6, 2)
+    water.drawRect(KUND_CENTER.x + 6, KUND_CENTER.y + 6, 8, 2)
+    water.endFill()
+    this.furnitureLayer.addChild(water)
 
     // a praying statue watches over the water
     const statue = new Sprite(this.assets.props.statue)
@@ -313,9 +357,11 @@ export class CourtScene {
       if (!avatar) {
         const seat = this.seatFor(agent.id)
         avatar = new Avatar(agent.id, agent.name, this.pal, this.assets, (id) => this.onSelect(id))
-        avatar.position.set(seat.x, seat.y)
         this.avatarLayer.addChild(avatar)
         this.avatars.set(agent.id, avatar)
+        // the master is already seated; shishyas walk in through the gate
+        if (agent.id === 'chanakya') avatar.position.set(seat.x, seat.y)
+        else this.walker.enterFromGate(avatar, seat, this.spawnCount++)
       }
       avatar.setAvastha(agent.avastha)
       this.glowLayer.setAvastha(agent.id, agent.avastha)

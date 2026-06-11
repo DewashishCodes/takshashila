@@ -143,8 +143,8 @@ All renderer↔main communication through `window.takshashila`:
 | 3 | ✅ Done | Chanakya | GOD agent, Stop-loop, Aadesh bar, Anumati queue |
 | 4 | ✅ Done | Hook Server | Named pipe, cth-hook shim, avastha updates |
 | 5 | ✅ Done | Court Floor | Pixi.js scene, tiled map, avatar sprites, camera |
-| 6 | 🔲 Next | Animations | Lamp overlay, scroll arc, avatar walk + A* |
-| 7 | 🔲 | Detail Panel | Terminal/Files/Git/Smriti tabs, CodeMirror |
+| 6 | ✅ Done | Animations | Lamp overlay, scroll arc, avatar walk + A* |
+| 7 | 🔲 Next | Detail Panel | Terminal/Files/Git/Smriti tabs, CodeMirror |
 | 8 | 🔲 | Polish | Onboarding wizard, Add Shishya flow, search panels |
 | 9 | 🔲 | Packaging | electron-builder, NSIS installer, README |
 
@@ -184,7 +184,9 @@ Pixi.js v7 scene in `src/renderer/src/scene/court/`. Art comes from real sprite 
 - `assets.ts` — loads + slices all sheets (`loadCourtAssets(): Promise<CourtAssets>`, awaited by CourtFloor before the scene is constructed). `CHARACTERS` maps agent id → frame geometry/scale/anchor. All pixel rects live here only.
 - `palette.ts` — `cssColor()` reads design tokens at runtime; `ROBE_COLORS` per agent (minimap dots); `shade()`.
 - `textures.ts` — procedural leftovers: manuscript, lamp, scroll pile, flying sandesh.
-- `Avatar.ts` — AnimatedSprite idle loop (×1.8 speed while working) + avastha dot + label + selection ring + `setFlip()` for glances.
+- `Avatar.ts` — AnimatedSprite idle loop (×1.8 speed while working) + walk loop (`setWalking`/`face`) + avastha dot + label + selection ring + `setFlip()` for glances (suppressed while walking).
+- `pathfinding.ts` — A* (4-dir, Manhattan) over `layout.buildWalkableGrid()`; unreachable → teleport fallback.
+- `Walk.ts` — `Walker`: walk-in procession from the entrance on spawn (Chanakya pre-seated), idle wander to `WANDER_SPOTS` with dwell + return, hurry home at 140px/s when work arrives. Ticked from CourtScene's master ticker.
 - `Camera.ts` — tweened: `intro()` (entrance → fit, 1.5s), `panTo()` (400ms ease-out on selection), wheel-zoom 0.8–1.4 relaxed to fit-scale. User input cancels tweens.
 - `LampOverlay.ts` — per-desk glow by avastha (working = 1.5s sine pulse, vighna = out).
 - `ScrollAnim.ts` — sandesh arc (80px over furniture, trail, unfurl). `'samrat'` maps to ENTRANCE.

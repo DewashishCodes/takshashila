@@ -101,7 +101,30 @@ Loop phases start at a random frame so the cast never breathes in unison.
 Unknown/overflow agents fall back to the Nachiketa sheet
 (`FALLBACK_CHARACTER`).
 
-## 5a. Tileset & furniture (`assets.ts`)
+Each agent also has a **walk loop** (`WALK_SHEETS` in assets.ts) from the same
+pack's RUN sheet — same frame geometry as the idle. Nachiketa's pack has no
+run sheet; his idle doubles as the walk. Chanakya's walk is row 1 of the
+necromancer sheet.
+
+## 5a. Walking (`Walk.ts` + `pathfinding.ts`)
+
+- Walkable grid: `layout.buildWalkableGrid()` — tile grid minus border/water,
+  chamber walls, desk slabs, fountain+statue, tree trunks, shelves, shrines,
+  the Arthashastra wall (`ARTHASHASTRA_WALL`, owned by layout.ts) and
+  decoration tiles. Desk seats and `WANDER_SPOTS` are force-kept walkable.
+- A*: 4-directional, Manhattan heuristic (`pathfinding.findPath`). Unreachable
+  targets fall back to teleport. Endpoints snap to the nearest walkable tile,
+  final waypoints use exact px positions.
+- Life rules (`Walker`): shishyas spawn at the entrance gate and walk to their
+  desks staggered 700ms apart (Chanakya is already seated). Idle agents stroll
+  to a random `WANDER_SPOT` every ~15–40s (later ~30–70s), dwell 3–7s, walk
+  back. The moment avastha turns working/processing, anyone away from their
+  desk hurries home at 140px/s (stroll = 85px/s).
+- While walking: walk loop at 0.18 speed, sprite faces the direction of
+  travel, ambient glances are suppressed. Avatars y-sort
+  (`avatarLayer.sortableChildren`, zIndex = y).
+
+## 5b. Tileset & furniture (`assets.ts`)
 
 Cainos "Pixel Art Top Down — Basic", 32px grid:
 
@@ -117,10 +140,14 @@ Cainos "Pixel Art Top Down — Basic", 32px grid:
   vase/pot/jug/barrel/chest/rock/cairn/gravestone/signpost = decorations
   (cycled deterministically per `DECORATIONS` kind).
 - Plants (`plants.png`): tree2 ×1.5 = the central tree (canopy layer),
-  bush1–4 = plant decorations.
+  tree1/tree3 ×1.2 = corner trees (`kind: 'tree'` decorations, canopy layer),
+  bush1–4 = plant decorations, tuft1–4 = grass-tuft ground detail on ~40%
+  of grass tiles (deterministic hash).
 - Struct (`struct.png`): stone arch ×1.4 over the entrance (canopy layer).
+- Kund water: blue ellipse + glints over the fountain basin; Ambient ripples
+  play above it in the UI layer.
 
-## 5b. Ambient zones (`ambientObjects.ts`)
+## 5c. Ambient zones (`ambientObjects.ts`)
 
 Pure scenery + read-only reactions. Entry: `initAmbientObjects(stage, CourtLayout)` — called once by CourtScene after the map is built.
 
@@ -139,9 +166,13 @@ Pure scenery + read-only reactions. Entry: `initAmbientObjects(stage, CourtLayou
 | Lamp glow (working) | radius 20→28px, 1.5s sine | alpha 0.4 |
 | Lamp glow (idle / processing / siddhi / vighna) | static | alpha 0.1 / 0.3 / 0.2 / 0 |
 | Sandesh scroll | 900ms flight + 300ms unfurl | 80px arc over furniture, cubic ease-in-out, 3-dot fading trail |
-| Kund ripple | every 2s, 1.6s expand | alpha 0.3→0, radius 4→26px |
+| Kund ripple | every 2s, 1.6s expand | ellipse 4→28px wide, alpha 0.4→0, over the fountain |
 | Torch flicker | every 100–200ms | brightness 0.6–1.0 |
 | Banyan leaves | 5 quads, 4–9px/s upward drift | loop within canopy, sine sway |
+| Walk-in procession | 400ms + 700ms/agent stagger | entrance gate → desk, A* path |
+| Idle wander | every ~15–70s, dwell 3–7s | desk → random WANDER_SPOT → desk |
+| Hurry home | 140px/s (stroll 85px/s) | when avastha flips to working away from desk |
+| Butterflies | 3, lissajous drift, 120ms flap | over the grass corners |
 | Camera intro | 1.5s entrance → full court | ease-in-out cubic |
 | Camera focus pan | 400ms to selected desk | ease-out cubic, user input cancels |
 | Shloka float | every 12–20s; 0.5s in / 2s hold / 0.5s out | gold @ 0.7, above canopy |

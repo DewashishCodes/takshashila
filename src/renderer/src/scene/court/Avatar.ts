@@ -14,8 +14,12 @@ export class Avatar extends Container {
   private statusDot: Graphics
   private bodyC: Container
   private anim: AnimatedSprite
+  private idleFrames: import('pixi.js').Texture[]
+  private walkFrames: import('pixi.js').Texture[]
   private idleSpeed: number
   private pal: ScenePalette
+  /** true while the scene is moving this avatar along a path */
+  walking = false
 
   constructor(
     agentId: string,
@@ -29,7 +33,10 @@ export class Avatar extends Container {
     this.pal = pal
 
     const def = CHARACTERS[agentId] ?? CHARACTERS[FALLBACK_CHARACTER]
-    const frames = assets.characters[agentId] ?? assets.characters[FALLBACK_CHARACTER]
+    const sheets = assets.characters[agentId] ?? assets.characters[FALLBACK_CHARACTER]
+    const frames = sheets.idle
+    this.idleFrames = sheets.idle
+    this.walkFrames = sheets.walk
     this.idleSpeed = def.speed
 
     // selection ring — ellipse shadow under the feet, gold when selected
@@ -94,9 +101,11 @@ export class Avatar extends Container {
     this.statusDot.beginFill(color, 0.25)
     this.statusDot.drawCircle(0, 0, 7)
     this.statusDot.endFill()
-    // working agents move with urgency
-    const busy = avastha === 'working' || avastha === 'processing'
-    this.anim.animationSpeed = busy ? this.idleSpeed * 1.8 : this.idleSpeed
+    // working agents move with urgency (walk speed is owned by setWalking)
+    if (!this.walking) {
+      const busy = avastha === 'working' || avastha === 'processing'
+      this.anim.animationSpeed = busy ? this.idleSpeed * 1.8 : this.idleSpeed
+    }
   }
 
   setSelected(selected: boolean): void {
@@ -105,7 +114,24 @@ export class Avatar extends Container {
 
   /** Idle glance — flip the sprite horizontally (ambient animation) */
   setFlip(flipped: boolean): void {
+    if (this.walking) return // facing is owned by the walk while moving
     this.bodyC.scale.x = flipped ? -1 : 1
+  }
+
+  /** Walk loop on/off. The scene drives position; this swaps the animation. */
+  setWalking(walking: boolean): void {
+    if (this.walking === walking) return
+    this.walking = walking
+    this.anim.textures = walking ? this.walkFrames : this.idleFrames
+    this.anim.animationSpeed = walking ? 0.18 : this.idleSpeed
+    this.anim.gotoAndPlay(0)
+    if (!walking) this.bodyC.scale.x = 1
+  }
+
+  /** Face the walk direction (sheets face right natively) */
+  face(dx: number): void {
+    if (Math.abs(dx) < 0.1) return
+    this.bodyC.scale.x = dx < 0 ? -1 : 1
   }
 
   /** Per-frame animation hook. The sheet loop does the breathing now. */
