@@ -5,6 +5,7 @@ import { registerPtyHandlers, killAllSessions } from './pty'
 import { loadConfig, getConfig, registerConfigHandlers } from './config'
 import { initSabha, closeSabhaWatchers, registerSabhaHandlers, applyHookEvent } from './sabha'
 import { registerFsHandlers } from './fs'
+import { registerSystemHandlers } from './system'
 import { registerGitHandlers } from './git'
 import { startChanakya, stopChanakya, drainInbox, notifyChanakyaStop, registerChanakyaHandlers } from './chanakya'
 import { startHookServer, stopHookServer, onHook } from './hooks'
@@ -73,6 +74,7 @@ app.whenReady().then(async () => {
   registerFsHandlers(getConfig)
   registerGitHandlers(getConfig)
   registerChanakyaHandlers()
+  registerSystemHandlers(getConfig)
 
   // Hook events: lifecycle signals from Claude Code sessions → avastha + itihas.
   // Chanakya's Stop event also drives the Stop-loop (flush queued aadesh).

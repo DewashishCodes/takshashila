@@ -142,10 +142,48 @@ function readAgent(id: string): AgentIdentity | null {
   catch { return null }
 }
 
+/** All agent ids on disk — seeds first (stable order), custom shishyas after. */
+function listAgentIds(): string[] {
+  const seedIds = AGENT_SEEDS.map(s => s.id)
+  let extra: string[] = []
+  try {
+    extra = readdirSync(join(sabhaHome, 'agents'), { withFileTypes: true })
+      .filter(d => d.isDirectory() && !seedIds.includes(d.name) && existsSync(p.identity(d.name)))
+      .map(d => d.name)
+      .sort()
+  } catch { /* agents dir missing */ }
+  return [...seedIds, ...extra]
+}
+
 function readAllAgents(): AgentIdentity[] {
-  return AGENT_SEEDS
-    .map(s => readAgent(s.id))
+  return listAgentIds()
+    .map(id => readAgent(id))
     .filter((a): a is AgentIdentity => a !== null)
+}
+
+// ─── Add Shishya (M8) ─────────────────────────────────────────────────────────
+
+function slugify(name: string): string {
+  return name.toLowerCase().trim().replace(/['']/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+function createAgent(name: string, domain: string, persona: string): AgentIdentity {
+  const id = slugify(name)
+  if (!id) throw new Error('Name must contain letters or digits')
+  if (existsSync(p.agentDir(id))) throw new Error(`A shishya named "${id}" already exists`)
+
+  mkdirSync(p.inbox(id),     { recursive: true })
+  mkdirSync(p.outbox(id),    { recursive: true })
+  mkdirSync(p.workspace(id), { recursive: true })
+
+  const identity: AgentIdentity = { id, name, domain, persona, avastha: 'idle', kshetra: p.workspace(id) }
+  writeFileSync(p.identity(id), JSON.stringify(identity, null, 2), 'utf8')
+  writeFileSync(p.smriti(id), `# ${name} — Smriti\n\n`, 'utf8')
+  ensureHookSettings(p.workspace(id), sabhaHome)
+
+  appendItihas({ timestamp: new Date().toISOString(), event: 'shishya:added', agentId: id, payload: { name, domain } })
+  watchAgent(id) // live immediately — no restart needed
+  return identity
 }
 
 // ─── Sandesh / Mailbox ────────────────────────────────────────────────────────
@@ -210,12 +248,13 @@ export function applyHookEvent(evt: HookEvent): void {
 // ─── Watchers ─────────────────────────────────────────────────────────────────
 
 const watchers: FSWatcher[] = []
+let senderGetter: () => WebContents | null = () => null
 
-function startWatchers(getSender: () => WebContents | null): void {
-  // Watch each agent's outbox for new sandesh (agents → renderer)
-  for (const seed of AGENT_SEEDS) {
-    const outboxDir = p.outbox(seed.id)
-    if (!existsSync(outboxDir)) continue
+/** Watch one agent's outbox (sandesh) + identity.json (avastha) — used at
+    startup for every agent on disk and again when a shishya is added live. */
+function watchAgent(id: string): void {
+  const outboxDir = p.outbox(id)
+  if (existsSync(outboxDir)) {
     try {
       const w = watch(outboxDir, (event, filename) => {
         if (event !== 'rename' || !filename?.endsWith('.json')) return
@@ -223,7 +262,7 @@ function startWatchers(getSender: () => WebContents | null): void {
         if (!existsSync(file)) return
         try {
           const sandesh = JSON.parse(readFileSync(file, 'utf8')) as Sandesh
-          const sender = getSender()
+          const sender = senderGetter()
           if (sender && !sender.isDestroyed()) sender.send('sabha:sandesh', sandesh)
         } catch { /* skip malformed */ }
       })
@@ -231,18 +270,16 @@ function startWatchers(getSender: () => WebContents | null): void {
     } catch { /* skip if dir unavailable */ }
   }
 
-  // Watch each agent's identity.json for avastha changes
-  for (const seed of AGENT_SEEDS) {
-    const idFile = p.identity(seed.id)
-    if (!existsSync(idFile)) continue
+  const idFile = p.identity(id)
+  if (existsSync(idFile)) {
     try {
       const w = watch(idFile, () => {
-        const agent = readAgent(seed.id)
+        const agent = readAgent(id)
         if (!agent) return
-        const sender = getSender()
+        const sender = senderGetter()
         if (sender && !sender.isDestroyed()) {
           const update: AvashtaUpdate = {
-            agentId: seed.id,
+            agentId: id,
             avastha: agent.avastha,
             lastKriya: agent.lastKriya
           }
@@ -252,6 +289,12 @@ function startWatchers(getSender: () => WebContents | null): void {
       watchers.push(w)
     } catch { /* skip */ }
   }
+}
+
+function startWatchers(getSender: () => WebContents | null): void {
+  senderGetter = getSender
+
+  for (const id of listAgentIds()) watchAgent(id)
 
   // Watch anumati/ dir for new approval requests
   const anumatiDir = p.anumati()
@@ -336,18 +379,23 @@ export function registerSabhaHandlers(
   ipcMain.handle('smriti:search', (_event, query: string) => {
     const q = query.toLowerCase()
     const results: Array<{ agentId: string; excerpt: string; score: number }> = []
-    for (const seed of AGENT_SEEDS) {
+    for (const id of listAgentIds()) {
       try {
-        const text = readFileSync(p.smriti(seed.id), 'utf8')
+        const text = readFileSync(p.smriti(id), 'utf8')
         if (!text.toLowerCase().includes(q)) continue
         const idx = text.toLowerCase().indexOf(q)
         const start = Math.max(0, idx - 60)
         const end = Math.min(text.length, idx + 120)
-        results.push({ agentId: seed.id, excerpt: text.slice(start, end).trim(), score: 1 })
+        results.push({ agentId: id, excerpt: text.slice(start, end).trim(), score: 1 })
       } catch { /* skip */ }
     }
     return results
   })
+
+  // Add Shishya (M8)
+  ipcMain.handle('sabha:addAgent', (_event, name: string, domain: string, persona: string) =>
+    createAgent(name, domain, persona)
+  )
 
   // Sabha write helpers (used by future M3+ modules)
   ipcMain.handle('sabha:updateSmriti', async (_event, agentId: string, content: string) => {

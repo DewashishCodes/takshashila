@@ -76,6 +76,15 @@ interface HarnessConfig {
   sabhaHome: string
   defaultCommand: string
   defaultShell: string
+  onboarded: boolean
+}
+
+interface SystemCheckItem {
+  id: string
+  label: string
+  found: boolean
+  detail: string
+  required: boolean
 }
 
 interface SpawnOpts {
@@ -105,6 +114,7 @@ interface TakshashilaAPI {
     getItihas: (limit?: number) => Promise<ItihasEntry[]>
     onSandesh: (cb: (msg: Sandesh) => void) => () => void
     onAvashtaChange: (cb: (update: AvashtaUpdate) => void) => () => void
+    addAgent: (name: string, domain: string, persona: string) => Promise<AgentIdentity>
   }
   anumati: {
     getPending: () => Promise<AnumatiItem[]>
@@ -129,6 +139,9 @@ interface TakshashilaAPI {
   config: {
     get: () => Promise<HarnessConfig>
     set: (partial: Partial<HarnessConfig>) => Promise<void>
+  }
+  system: {
+    check: () => Promise<SystemCheckItem[]>
   }
   chanakya: {
     status: () => Promise<string>

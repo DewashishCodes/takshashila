@@ -145,8 +145,8 @@ All renderer↔main communication through `window.takshashila`:
 | 5 | ✅ Done | Court Floor | Pixi.js scene, tiled map, avatar sprites, camera |
 | 6 | ✅ Done | Animations | Lamp overlay, scroll arc, avatar walk + A* |
 | 7 | ✅ Done | Detail Panel | Terminal/Files/Git/Smriti tabs, CodeMirror |
-| 8 | 🔲 Next | Polish | Onboarding wizard, Add Shishya flow, search panels |
-| 9 | 🔲 | Packaging | electron-builder, NSIS installer, README |
+| 8 | ✅ Done | Polish | Onboarding wizard, Add Shishya flow, search panels |
+| 9 | 🔲 Next | Packaging | electron-builder, NSIS installer, README |
 
 **Rule: Do not start M5 (Pixi.js floor) until M1 (terminals) works.**
 
@@ -205,6 +205,14 @@ Renderer types: `src/renderer/src/env.d.ts` declares `window.takshashila` — ke
 - `FilesPane.tsx` — kshetra tree (lazy `fs.listDir` per expanded dir) + editor with dirty marker, Save button, Ctrl+S. Unsaved-changes confirm before switching files.
 - `GitPane.tsx` — branch, working-tree status (staged/modified/untracked), last 30 commits via `git.*` IPC. Manual refresh.
 - `SmritiPane.tsx` — editable `smriti.md` with word counter against the 2000-word guideline; saves through `sabha:updateSmriti` (exposed as `smriti.update` in preload).
+
+## Polish (M8)
+
+- **Dynamic agents** — `sabha.ts` discovers agents from the `agents/` dir (`listAgentIds()`: seeds first, custom after), not from `AGENT_SEEDS` alone. `sabha:addAgent(name, domain, persona)` creates the full agent dir (identity, smriti, mailboxes, workspace, hook settings) and starts its watchers live via `watchAgent(id)` — no restart. The court scene already handles unknown agents (`overflowSeat`, `FALLBACK_CHARACTER`, robe-color fallback).
+- **Onboarding** — `config.onboarded` flag gates `OnboardingWizard` (3 steps: welcome / environment check / cast). `system:check` (`main/system.ts`) probes claude CLI, node, git with `--version` via `shell: true` (claude is a `.cmd` shim on Windows). SKIP also sets `onboarded`.
+- **Search** — `SearchPanel` modal (title-bar 🔍 or **Ctrl+K**): Smriti tab → `smriti:search` across all agents; Itihas tab → last 500 events, client-side filter. Result click selects the agent.
+- **PTY cwd** — `pty:spawn` defaults cwd to the agent's kshetra (was USERPROFILE) so the terminal matches the Files tab.
+- Shared `components/Modal/` — pixel-panel dialog overlay; Escape/backdrop close when an `onClose` is given.
 
 ## Chanakya PTY — Lessons Learned
 

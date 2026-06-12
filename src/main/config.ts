@@ -6,6 +6,7 @@ export interface HarnessConfig {
   sabhaHome: string
   defaultCommand: string
   defaultShell: string
+  onboarded: boolean
 }
 
 function configDir(): string {
@@ -20,7 +21,8 @@ function defaults(): HarnessConfig {
   return {
     sabhaHome: join(configDir(), 'sabha'),
     defaultCommand: 'claude',
-    defaultShell: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash')
+    defaultShell: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
+    onboarded: false
   }
 }
 

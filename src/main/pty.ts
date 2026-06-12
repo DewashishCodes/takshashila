@@ -1,7 +1,10 @@
 import { ipcMain, WebContents } from 'electron'
 import * as pty from 'node-pty'
 import { platform } from 'os'
+import { join } from 'path'
+import { existsSync } from 'fs'
 import { getHookPipePath } from './hooks'
+import { getConfig } from './config'
 
 interface PtySession {
   process: pty.IPty
@@ -82,6 +85,11 @@ export function registerPtyHandlers(getSender: () => WebContents | null): void {
   ipcMain.handle('pty:spawn', (_event, agentId: string, opts: SpawnOpts) => {
     // If chanakya (or any supervisor) already spawned this session, just attach
     if (sessions.has(agentId)) return agentId
+    // Default cwd to the agent's kshetra so the terminal matches the Files tab
+    if (!opts.cwd) {
+      const kshetra = join(getConfig().sabhaHome, 'agents', agentId, 'workspace')
+      if (existsSync(kshetra)) opts = { ...opts, cwd: kshetra }
+    }
     return spawnSession(agentId, opts, getSender)
   })
 

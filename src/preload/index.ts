@@ -53,7 +53,10 @@ const takshashila = {
       const listener = (_: Electron.IpcRendererEvent, update: AvashtaUpdate): void => cb(update)
       ipcRenderer.on('sabha:avastha-change', listener)
       return () => ipcRenderer.removeListener('sabha:avastha-change', listener)
-    }
+    },
+
+    addAgent: (name: string, domain: string, persona: string): Promise<AgentIdentity> =>
+      ipcRenderer.invoke('sabha:addAgent', name, domain, persona)
   },
 
   anumati: {
@@ -109,6 +112,11 @@ const takshashila = {
 
     set: (partial: Partial<HarnessConfig>): Promise<void> =>
       ipcRenderer.invoke('config:set', partial)
+  },
+
+  system: {
+    check: (): Promise<SystemCheckItem[]> =>
+      ipcRenderer.invoke('system:check')
   },
 
   chanakya: {
@@ -215,4 +223,13 @@ interface HarnessConfig {
   sabhaHome: string
   defaultCommand: string
   defaultShell: string
+  onboarded: boolean
+}
+
+interface SystemCheckItem {
+  id: string
+  label: string
+  found: boolean
+  detail: string
+  required: boolean
 }

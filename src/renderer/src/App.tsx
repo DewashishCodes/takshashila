@@ -1,7 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import ShishyaPanel from './components/ShishyaPanel'
 import ShishyaCard from './components/ShishyaCard'
 import CourtFloor from './components/CourtFloor'
+import OnboardingWizard from './components/OnboardingWizard'
+import AddShishyaModal from './components/AddShishyaModal'
+import SearchPanel from './components/SearchPanel'
 
 interface Agent {
   id: string
@@ -26,13 +29,25 @@ export default function App(): React.JSX.Element {
   const [agents, setAgents] = useState<Agent[]>(AGENT_SEEDS)
   const [selectedId, setSelectedId] = useState<string | null>('chanakya')
   const [aadesh, setAadesh] = useState('')
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [showAddShishya, setShowAddShishya] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Load agents from Sabha on mount
-  useEffect(() => {
+  const refreshAgents = useCallback(() => {
     window.takshashila.sabha.getAgents().then((loaded) => {
       if (loaded.length > 0) setAgents(loaded.map(a => ({ ...a, lastKriya: undefined })))
     }).catch(() => { /* use seeds */ })
+  }, [])
+
+  // Load agents from Sabha on mount
+  useEffect(() => {
+    refreshAgents()
+
+    // First run: show the onboarding wizard
+    window.takshashila.config.get().then((cfg) => {
+      if (!cfg.onboarded) setShowOnboarding(true)
+    }).catch(() => { /* skip */ })
 
     // Subscribe to avastha changes
     const unsub = window.takshashila.sabha.onAvashtaChange((update) => {
@@ -42,8 +57,21 @@ export default function App(): React.JSX.Element {
           : a
       ))
     })
-    return unsub
-  }, [])
+
+    // Ctrl/Cmd+K opens the search panel
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setShowSearch((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+
+    return () => {
+      unsub()
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [refreshAgents])
 
   const selectedAgent = agents.find((a) => a.id === selectedId) ?? null
 
@@ -69,9 +97,21 @@ export default function App(): React.JSX.Element {
         flexShrink: 0,
         ...({ WebkitAppRegion: 'drag' } as React.CSSProperties)
       }}>
-        <span style={{ fontFamily: 'var(--font-pixel)', fontSize: 8, color: 'var(--color-gold)' }}>
+        <span style={{ fontFamily: 'var(--font-pixel)', fontSize: 8, color: 'var(--color-gold)', flex: 1 }}>
           TAKSHASHILA
         </span>
+        <button
+          onClick={() => setShowSearch(true)}
+          title="Search smriti & itihas (Ctrl+K)"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--color-gold-dim)', fontSize: 12,
+            padding: '0 var(--space-4)', height: '100%',
+            ...({ WebkitAppRegion: 'no-drag' } as React.CSSProperties)
+          }}
+        >
+          🔍
+        </button>
       </div>
 
       {/* Main: court floor + detail panel */}
@@ -107,6 +147,7 @@ export default function App(): React.JSX.Element {
           />
         ))}
         <button
+          onClick={() => setShowAddShishya(true)}
           style={{
             width: 48, height: 48, flexShrink: 0,
             background: 'none',
@@ -160,6 +201,31 @@ export default function App(): React.JSX.Element {
           ►
         </button>
       </div>
+
+      {/* Overlays */}
+      {showOnboarding && (
+        <OnboardingWizard
+          agents={agents}
+          onDone={() => setShowOnboarding(false)}
+        />
+      )}
+      {showAddShishya && (
+        <AddShishyaModal
+          onClose={() => setShowAddShishya(false)}
+          onCreated={(agent) => {
+            setShowAddShishya(false)
+            refreshAgents()
+            setSelectedId(agent.id)
+          }}
+        />
+      )}
+      {showSearch && (
+        <SearchPanel
+          agents={agents}
+          onClose={() => setShowSearch(false)}
+          onSelectAgent={(id) => setSelectedId(id)}
+        />
+      )}
     </div>
   )
 }
