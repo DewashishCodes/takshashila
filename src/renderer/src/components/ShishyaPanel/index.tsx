@@ -1,5 +1,8 @@
 import React, { useState } from 'react'
 import TerminalPane from './TerminalPane'
+import FilesPane from './FilesPane'
+import GitPane from './GitPane'
+import SmritiPane from './SmritiPane'
 
 interface Agent {
   id: string
@@ -126,17 +129,20 @@ export default function ShishyaPanel({ agent }: Props): React.JSX.Element {
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Tab content — terminal stays mounted (hidden) so xterm + scrollback
+          survive tab switches; the PTY stream never detaches */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {tab === 'terminal' && <TerminalPane agentId={agent.id} />}
-        {tab !== 'terminal' && (
-          <div style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--color-text-dim)', fontFamily: 'var(--font-body)', fontSize: 12
-          }}>
-            {TAB_LABELS[tab]} — coming in a later milestone
-          </div>
-        )}
+        <div style={{
+          flex: 1,
+          display: tab === 'terminal' ? 'flex' : 'none',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}>
+          <TerminalPane agentId={agent.id} />
+        </div>
+        {tab === 'files' && <FilesPane agentId={agent.id} />}
+        {tab === 'git' && <GitPane agentId={agent.id} />}
+        {tab === 'smriti' && <SmritiPane agentId={agent.id} />}
       </div>
     </div>
   )

@@ -144,8 +144,8 @@ All renderer↔main communication through `window.takshashila`:
 | 4 | ✅ Done | Hook Server | Named pipe, cth-hook shim, avastha updates |
 | 5 | ✅ Done | Court Floor | Pixi.js scene, tiled map, avatar sprites, camera |
 | 6 | ✅ Done | Animations | Lamp overlay, scroll arc, avatar walk + A* |
-| 7 | 🔲 Next | Detail Panel | Terminal/Files/Git/Smriti tabs, CodeMirror |
-| 8 | 🔲 | Polish | Onboarding wizard, Add Shishya flow, search panels |
+| 7 | ✅ Done | Detail Panel | Terminal/Files/Git/Smriti tabs, CodeMirror |
+| 8 | 🔲 Next | Polish | Onboarding wizard, Add Shishya flow, search panels |
 | 9 | 🔲 | Packaging | electron-builder, NSIS installer, README |
 
 **Rule: Do not start M5 (Pixi.js floor) until M1 (terminals) works.**
@@ -196,6 +196,15 @@ Pixi.js v7 scene in `src/renderer/src/scene/court/`. Art comes from real sprite 
 - `components/CourtFloor/index.tsx` — React wrapper; subscribes `onSandesh` → `playScroll`; chanakya idle→working transition fires a samrat scroll from the entrance. Scene errors render an inline panel, never blank the app.
 
 Renderer types: `src/renderer/src/env.d.ts` declares `window.takshashila` — keep it mirrored with `src/preload/index.ts`.
+
+## Detail Panel (M7)
+
+`components/ShishyaPanel/` — four tabs per agent. The terminal tab stays **mounted but hidden** (`display: none`) on tab switch so xterm + scrollback survive; never conditionally unmount it.
+
+- `Editor.tsx` — CodeMirror 6 wrapper. Custom parchment theme + highlight style (token values mirror `tokens.css` — CM needs concrete colors at extension build time). Language by file extension (ts/js/json/md/html/css). `Mod-s` keymap → `onSave`. External value syncs are tagged with an `externalSync` annotation and skipped by the update listener so reloads never fire `onChange`/mark dirty. Parents key the component by file path so each file gets a fresh editor instance.
+- `FilesPane.tsx` — kshetra tree (lazy `fs.listDir` per expanded dir) + editor with dirty marker, Save button, Ctrl+S. Unsaved-changes confirm before switching files.
+- `GitPane.tsx` — branch, working-tree status (staged/modified/untracked), last 30 commits via `git.*` IPC. Manual refresh.
+- `SmritiPane.tsx` — editable `smriti.md` with word counter against the 2000-word guideline; saves through `sabha:updateSmriti` (exposed as `smriti.update` in preload).
 
 ## Chanakya PTY — Lessons Learned
 

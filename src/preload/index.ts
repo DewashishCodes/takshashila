@@ -75,7 +75,10 @@ const takshashila = {
       ipcRenderer.invoke('smriti:getAgentSmriti', agentId),
 
     search: (query: string): Promise<SmritiResult[]> =>
-      ipcRenderer.invoke('smriti:search', query)
+      ipcRenderer.invoke('smriti:search', query),
+
+    update: (agentId: string, content: string): Promise<void> =>
+      ipcRenderer.invoke('sabha:updateSmriti', agentId, content)
   },
 
   fs: {

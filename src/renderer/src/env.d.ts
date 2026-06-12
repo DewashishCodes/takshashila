@@ -114,6 +114,7 @@ interface TakshashilaAPI {
   smriti: {
     getAgentSmriti: (agentId: string) => Promise<string>
     search: (query: string) => Promise<SmritiResult[]>
+    update: (agentId: string, content: string) => Promise<void>
   }
   fs: {
     listDir: (agentId: string, rel: string) => Promise<FsEntry[]>
