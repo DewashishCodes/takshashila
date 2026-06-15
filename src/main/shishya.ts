@@ -27,11 +27,9 @@ interface RuntimeState {
   silenceTimer:       NodeJS.Timeout | null
   promptSilenceTimer: NodeJS.Timeout | null
   watchdogTimer:      NodeJS.Timeout | null
-  // Delivery confirmation: retry Enter once if TUI didn't register it
+  // Delivery retry: resend Enter once if hook Stop never fires within 5s
   pendingDelivery:    string | null
-  deliveryAt:         number
   deliveryRetryTimer: NodeJS.Timeout | null
-  postDeliveryOutput: boolean
 }
 
 const SILENCE_MS        = 4000
@@ -120,14 +118,6 @@ function markPromptReady(st: RuntimeState): void {
 }
 
 function onOutput(st: RuntimeState, data: string): void {
-  // Delivery confirmation: once meaningful output arrives ≥600ms after submit,
-  // Claude is processing the message — clear the retry guard.
-  if (st.pendingDelivery && !st.postDeliveryOutput && Date.now() - st.deliveryAt > 600) {
-    st.postDeliveryOutput = true
-    st.pendingDelivery = null
-    if (st.deliveryRetryTimer) { clearTimeout(st.deliveryRetryTimer); st.deliveryRetryTimer = null }
-  }
-
   if (st.silenceTimer) clearTimeout(st.silenceTimer)
   st.silenceTimer = setTimeout(() => setAvastha(st.agentId, 'idle'), SILENCE_MS)
 
@@ -157,8 +147,6 @@ function onOutput(st: RuntimeState, data: string): void {
 
 function submitToShishya(st: RuntimeState, text: string): void {
   st.pendingDelivery = text
-  st.deliveryAt = Date.now()
-  st.postDeliveryOutput = false
 
   writeToSession(st.agentId, text)
 
@@ -241,8 +229,7 @@ function createRuntime(agentId: string): RuntimeState {
     agentId, kshetra, spawned: false, spawnedAt: 0, promptReady: false,
     queue: [], inboxWatcher: null, silenceTimer: null,
     promptSilenceTimer: null, watchdogTimer: null,
-    pendingDelivery: null, deliveryAt: 0,
-    deliveryRetryTimer: null, postDeliveryOutput: false
+    pendingDelivery: null, deliveryRetryTimer: null
   }
 
   const inbox = inboxDir(agentId)
@@ -301,6 +288,10 @@ export function addShishyaRuntime(agentId: string): void {
 export function notifyShishyaStop(agentId: string): void {
   const st = runtimes.get(agentId)
   if (!st) return
+  // Stop means Claude executed and finished — delivery was successful.
+  // Cancel any pending retry so we don't send a spurious Enter afterwards.
+  if (st.deliveryRetryTimer) { clearTimeout(st.deliveryRetryTimer); st.deliveryRetryTimer = null }
+  st.pendingDelivery = null
   markPromptReady(st)
   setTimeout(() => processInbox(st), 100)
 }
