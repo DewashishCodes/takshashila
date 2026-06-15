@@ -7,9 +7,10 @@ import {
 import { execSync } from 'child_process'
 import { spawnSession, addDataListener, removeDataListener, writeToSession } from './pty'
 import type { HarnessConfig } from './config'
+import { sandeshShimPath } from './hooks'
 
 // ─── Resolve the claude binary regardless of Electron's stripped PATH ─────────
-function resolveClaudeCommand(command: string): string {
+export function resolveClaudeCommand(command: string): string {
   if (command !== 'claude') return command
 
   try {
@@ -39,6 +40,7 @@ const WATCHDOG_MS = 30000
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let sabhaHome = ''
+let storedConfig: HarnessConfig | null = null
 let getSender: () => WebContents | null = () => null
 let currentAvastha: Avastha = 'idle'
 let silenceTimer: NodeJS.Timeout | null = null
@@ -56,31 +58,56 @@ const inboxDir     = (): string => join(sabhaHome, 'agents', 'chanakya', 'inbox'
 const itihasPath   = (): string => join(sabhaHome, 'itihas.jsonl')
 const anumatiDir   = (): string => join(sabhaHome, 'anumati')
 
-// ─── CLAUDE.md — persona injected silently via Claude Code's project context ──
-// Writing this file means Claude Code reads it on startup without echoing
-// anything to the terminal, avoiding the "system prompt visible" problem.
-function ensureChanakyaClaudeMd(kshetra: string): void {
-  const mdPath = join(kshetra, 'CLAUDE.md')
-  if (existsSync(mdPath)) return
+// ─── CLAUDE.md — persona + current specialist roster (always regenerated) ─────
+// Written fresh on every boot and whenever a shishya is added, so Chanakya
+// always knows the current cast. Claude Code reads it silently on startup.
+
+function listSpecialists(): { id: string; name: string; persona: string }[] {
+  const agentsDir = join(sabhaHome, 'agents')
+  try {
+    return readdirSync(agentsDir, { withFileTypes: true })
+      .filter(d => d.isDirectory() && d.name !== 'chanakya')
+      .flatMap(d => {
+        try {
+          const identity = JSON.parse(readFileSync(join(agentsDir, d.name, 'identity.json'), 'utf8'))
+          return [{ id: d.name, name: identity.name as string, persona: identity.persona as string }]
+        } catch { return [] }
+      })
+  } catch { return [] }
+}
+
+function writeChanakyaClaudeMd(kshetra: string): void {
   mkdirSync(kshetra, { recursive: true })
-  writeFileSync(mdPath, [
+  const specialists = listSpecialists()
+  const sandeshCmd = `node "${sandeshShimPath(sabhaHome)}"`
+  const lines = [
     '# Chanakya — Orchestrator of Takshashila',
     '',
     'You are Chanakya, the GOD orchestrator of Takshashila, an ancient Indian university of AI agents.',
     '',
     '## Mandate format',
     'Samrat (the user) sends mandates as: `[Aadesh from samrat]: <text>`',
-    'Process each mandate: handle it directly, or name the specialist agent to delegate to and why.',
+    'Process each mandate directly, or delegate to a specialist using the command below.',
     'Always be concise. Do not ask clarifying questions unless strictly necessary.',
     '',
+    '## Delegating work to a specialist',
+    '```bash',
+    `${sandeshCmd} --to <agentId> --subject "<title>" --body "<full instructions>"`,
+    '```',
+    'The specialist will work on the task and send results back to your inbox.',
+    '',
     '## Available specialists',
-    '- **Aaruni** — long-running tasks, retries, persistence',
-    '- **Nachiketa** — web search, research, information gathering',
-    '- **Gargi** — code review, validation, quality checks',
-    '- **Bharadwaja** — code writing, builds, technical implementation',
-    '- **Chandragupta** — quick tasks, deployments, rapid execution',
-    '- **Vishnu Sharma** — documentation, reports, structured writing',
-  ].join('\n'), 'utf8')
+    ...(specialists.length > 0
+      ? specialists.map(s => `- **${s.name}** (\`${s.id}\`) — ${s.persona}`)
+      : ['- *(No specialists yet)*']),
+  ]
+  writeFileSync(join(kshetra, 'CLAUDE.md'), lines.join('\n'), 'utf8')
+}
+
+/** Regenerate Chanakya's CLAUDE.md with the current specialist roster. */
+export function refreshChanakyaRoster(): void {
+  if (!sabhaHome) return
+  writeChanakyaClaudeMd(join(sabhaHome, 'agents', 'chanakya', 'workspace'))
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -90,12 +117,13 @@ export function startChanakya(
   sender: () => WebContents | null
 ): void {
   sabhaHome = config.sabhaHome
+  storedConfig = config
   getSender = sender
   promptReady = false
   aadeshQueue.length = 0
 
   const kshetra = join(sabhaHome, 'agents', 'chanakya', 'workspace')
-  ensureChanakyaClaudeMd(kshetra)
+  writeChanakyaClaudeMd(kshetra)
 
   const command = resolveClaudeCommand(config.defaultCommand)
   log('chanakya:spawn-attempt', { command })
@@ -185,8 +213,8 @@ function onOutput(data: string): void {
     markPromptReady()
   }
 
-  // Detect tool-permission prompts
-  if (/\(y\/n\b|\bYes\b.*\bNo\b/i.test(plain) && !/\[Aadesh/i.test(plain)) {
+  // Detect Claude Code tool-permission prompts (numbered menu or explicit (y/n))
+  if (/\(y\/n\)|1[.)]\s+Yes/i.test(plain) && !/\[Aadesh/i.test(plain)) {
     createAnumati(plain)
   }
 }
@@ -334,7 +362,9 @@ export function registerChanakyaHandlers(): void {
   ipcMain.handle('chanakya:status', () => currentAvastha)
 
   ipcMain.handle('chanakya:restart', () => {
+    if (!storedConfig) return
     stopChanakya()
+    startChanakya(storedConfig, getSender)
   })
 
   ipcMain.handle('chanakya:anumati-respond', (_event, approved: boolean) => {
