@@ -33,6 +33,52 @@ export function onHook(cb: HookListener): () => void {
 // Reads the hook payload from stdin, forwards one JSON line to the named pipe,
 // always exits 0 quickly so it never blocks or fails a tool call.
 
+// ─── Sandesh shim — lets any Claude Code session drop a sandesh into an inbox ──
+// Claude agents run: node <sabhaHome>/cth-sandesh.js --to <id> --subject <s> --body <b>
+
+const SANDESH_SHIM_SOURCE = `// cth-sandesh.js — Takshashila sandesh shim (generated, do not edit)
+// Usage: node cth-sandesh.js --to <agentId> --subject "<title>" --body "<text>"
+const path = require('path')
+const fs = require('fs')
+const crypto = require('crypto')
+
+const args = {}
+for (let i = 2; i < process.argv.length; i++) {
+  const a = process.argv[i]
+  if (a.startsWith('--') && i + 1 < process.argv.length) { args[a.slice(2)] = process.argv[++i] }
+}
+
+const sabhaHome = process.env.CLAUDE_CODE_SABHA_HOME || ''
+const from = process.env.CLAUDE_CODE_AGENT_ID || 'unknown'
+const { to, subject = 'message', body = '' } = args
+
+if (!sabhaHome || !to) {
+  console.error('[cth-sandesh] CLAUDE_CODE_SABHA_HOME or --to missing')
+  process.exit(1)
+}
+
+const id = crypto.randomUUID()
+const sandesh = { id, from, to, timestamp: new Date().toISOString(),
+  speech_act: from === 'chanakya' ? 'request' : 'result', subject, body }
+
+const inboxDir = path.join(sabhaHome, 'agents', to, 'inbox')
+try { fs.mkdirSync(inboxDir, { recursive: true }) } catch {}
+fs.writeFileSync(path.join(inboxDir, id + '.json'), JSON.stringify(sandesh, null, 2))
+// Also write a copy to sender outbox so renderer scroll animation fires
+const outboxDir = path.join(sabhaHome, 'agents', from, 'outbox')
+try { fs.mkdirSync(outboxDir, { recursive: true }) } catch {}
+fs.writeFileSync(path.join(outboxDir, id + '.json'), JSON.stringify(sandesh, null, 2))
+console.log('[cth-sandesh] sent:', id, 'from:', from, 'to:', to)
+`
+
+export function sandeshShimPath(sabhaHome: string): string {
+  return join(sabhaHome, 'cth-sandesh.js')
+}
+
+export function ensureSandeshShim(sabhaHome: string): void {
+  writeFileSync(sandeshShimPath(sabhaHome), SANDESH_SHIM_SOURCE, 'utf8')
+}
+
 const SHIM_SOURCE = `// cth-hook.js — Takshashila hook shim (generated, do not edit)
 const net = require('net')
 const pipe = process.env.TAKSHASHILA_HOOK_PIPE
@@ -97,6 +143,7 @@ export function startHookServer(sabhaHome: string): string {
     : join(tmpdir(), `takshashila-hooks-${process.pid}.sock`)
 
   ensureHookShim(sabhaHome)
+  ensureSandeshShim(sabhaHome)
 
   server = createServer((socket: Socket) => {
     let buf = ''
