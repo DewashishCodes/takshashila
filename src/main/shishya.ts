@@ -20,24 +20,29 @@ interface RuntimeState {
   agentId:    string
   kshetra:    string
   spawned:    boolean
-  spawnedAt:  number   // Date.now() at spawn — used to enforce boot grace period
+  spawnedAt:  number
   promptReady: boolean
   queue:      string[]
-  inboxWatcher: FSWatcher | null
-  silenceTimer: NodeJS.Timeout | null
+  inboxWatcher:       FSWatcher | null
+  silenceTimer:       NodeJS.Timeout | null
   promptSilenceTimer: NodeJS.Timeout | null
-  watchdogTimer: NodeJS.Timeout | null
+  watchdogTimer:      NodeJS.Timeout | null
+  // Delivery confirmation: retry Enter once if TUI didn't register it
+  pendingDelivery:    string | null
+  deliveryAt:         number
+  deliveryRetryTimer: NodeJS.Timeout | null
+  postDeliveryOutput: boolean
 }
 
 const SILENCE_MS        = 4000
 const WATCHDOG_MS       = 30_000
-// How long after spawn before we trust prompt-ready signals.
-// Claude Code's startup animation can contain `>` characters that look like the
-// interactive prompt. We ignore regex matches and use a longer silence window
-// during this period so the TUI is fully interactive before delivery.
-const BOOT_GRACE_MS     = 5000
-const BOOT_SILENCE_MS   = 4000  // silence window used during boot phase
-const NORMAL_SILENCE_MS = 1500  // silence window after boot settled
+// During simultaneous multi-agent spawn, sessions boot more slowly due to
+// resource contention. Use a longer boot window so we don't fire before the
+// TUI is actually interactive.
+const BOOT_GRACE_MS     = 8000   // suppress promptReady for 8s post-spawn
+const BOOT_SILENCE_MS   = 6000   // silence window during boot phase
+const NORMAL_SILENCE_MS = 1500   // silence window once settled
+const DELIVERY_RETRY_MS = 5000   // if no output 5s after submit, resend Enter
 
 const runtimes = new Map<string, RuntimeState>()
 
@@ -115,6 +120,14 @@ function markPromptReady(st: RuntimeState): void {
 }
 
 function onOutput(st: RuntimeState, data: string): void {
+  // Delivery confirmation: once meaningful output arrives ≥600ms after submit,
+  // Claude is processing the message — clear the retry guard.
+  if (st.pendingDelivery && !st.postDeliveryOutput && Date.now() - st.deliveryAt > 600) {
+    st.postDeliveryOutput = true
+    st.pendingDelivery = null
+    if (st.deliveryRetryTimer) { clearTimeout(st.deliveryRetryTimer); st.deliveryRetryTimer = null }
+  }
+
   if (st.silenceTimer) clearTimeout(st.silenceTimer)
   st.silenceTimer = setTimeout(() => setAvastha(st.agentId, 'idle'), SILENCE_MS)
 
@@ -127,21 +140,43 @@ function onOutput(st: RuntimeState, data: string): void {
     inBootPhase ? BOOT_SILENCE_MS : NORMAL_SILENCE_MS
   )
 
-  // Only trust the `>` regex outside the boot phase; during startup Claude Code's
-  // TUI can print `>` characters that aren't the interactive input prompt.
-  if (!inBootPhase) {
-    const plain = stripAnsi(data)
-    if (/(?:^|[\r\n])\s*>\s*$/.test(plain.trimEnd())) markPromptReady(st)
+  // The `>` prompt regex is specific enough (> alone at end of output) to
+  // trust even during boot — startup animation doesn't end lines with bare >.
+  // During boot, add 1s settling time so the TUI is fully interactive.
+  const plain = stripAnsi(data)
+  if (/(?:^|[\r\n])\s*>\s*$/.test(plain.trimEnd())) {
+    if (inBootPhase) {
+      setTimeout(() => markPromptReady(st), 1000)
+    } else {
+      markPromptReady(st)
+    }
   }
 }
 
 // ─── Queue + flush ────────────────────────────────────────────────────────────
 
 function submitToShishya(st: RuntimeState, text: string): void {
+  st.pendingDelivery = text
+  st.deliveryAt = Date.now()
+  st.postDeliveryOutput = false
+
   writeToSession(st.agentId, text)
-  // 400ms gap gives the TUI time to render the typed text before Enter arrives.
-  // On a freshly spawned session this is more reliable than 200ms.
-  setTimeout(() => writeToSession(st.agentId, '\r'), 400)
+
+  // 500ms gap gives the TUI time to render the typed text before Enter arrives.
+  setTimeout(() => {
+    writeToSession(st.agentId, '\r')
+
+    // Retry guard: if Enter didn't register (no output within DELIVERY_RETRY_MS),
+    // send it once more. Handles the race where TUI wasn't quite ready.
+    if (st.deliveryRetryTimer) clearTimeout(st.deliveryRetryTimer)
+    st.deliveryRetryTimer = setTimeout(() => {
+      if (st.pendingDelivery) {
+        log(st.agentId, 'shishya:delivery-retry', { preview: text.slice(0, 60) })
+        st.pendingDelivery = null
+        writeToSession(st.agentId, '\r')
+      }
+    }, DELIVERY_RETRY_MS)
+  }, 500)
 }
 
 function flushQueue(st: RuntimeState): void {
@@ -205,7 +240,9 @@ function createRuntime(agentId: string): RuntimeState {
   const st: RuntimeState = {
     agentId, kshetra, spawned: false, spawnedAt: 0, promptReady: false,
     queue: [], inboxWatcher: null, silenceTimer: null,
-    promptSilenceTimer: null, watchdogTimer: null
+    promptSilenceTimer: null, watchdogTimer: null,
+    pendingDelivery: null, deliveryAt: 0,
+    deliveryRetryTimer: null, postDeliveryOutput: false
   }
 
   const inbox = inboxDir(agentId)
@@ -230,6 +267,7 @@ function destroyRuntime(st: RuntimeState): void {
   if (st.silenceTimer)       clearTimeout(st.silenceTimer)
   if (st.promptSilenceTimer) clearTimeout(st.promptSilenceTimer)
   if (st.watchdogTimer)      clearTimeout(st.watchdogTimer)
+  if (st.deliveryRetryTimer) clearTimeout(st.deliveryRetryTimer)
   if (st.spawned) removeDataListener(st.agentId, (data) => onOutput(st, data))
   runtimes.delete(st.agentId)
 }
