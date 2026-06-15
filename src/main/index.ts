@@ -7,8 +7,9 @@ import { initSabha, closeSabhaWatchers, registerSabhaHandlers, applyHookEvent } 
 import { registerFsHandlers } from './fs'
 import { registerSystemHandlers } from './system'
 import { registerGitHandlers } from './git'
-import { startChanakya, stopChanakya, drainInbox, notifyChanakyaStop, registerChanakyaHandlers } from './chanakya'
+import { startChanakya, stopChanakya, drainInbox, notifyChanakyaStop, registerChanakyaHandlers, refreshChanakyaRoster } from './chanakya'
 import { startHookServer, stopHookServer, onHook } from './hooks'
+import { startShishyaRuntimes, addShishyaRuntime, notifyShishyaStop, stopAllShishyas } from './shishya'
 
 let mainWebContents: WebContents | null = null
 
@@ -70,21 +71,30 @@ app.whenReady().then(async () => {
 
   registerPtyHandlers(getSender)
   registerConfigHandlers()
-  registerSabhaHandlers(getSender, getConfig, () => drainInbox())
+  registerSabhaHandlers(getSender, getConfig, () => drainInbox(), (id) => {
+    refreshChanakyaRoster()
+    addShishyaRuntime(id)
+  })
   registerFsHandlers(getConfig)
   registerGitHandlers(getConfig)
   registerChanakyaHandlers()
   registerSystemHandlers(getConfig)
 
   // Hook events: lifecycle signals from Claude Code sessions → avastha + itihas.
-  // Chanakya's Stop event also drives the Stop-loop (flush queued aadesh).
+  // Stop events drive the prompt-ready Stop-loop for both Chanakya and Shishyas.
   onHook((evt) => {
     applyHookEvent(evt)
-    if (evt.event === 'Stop' && evt.agentId === 'chanakya') notifyChanakyaStop()
+    if (evt.event === 'Stop') {
+      if (evt.agentId === 'chanakya') notifyChanakyaStop()
+      else notifyShishyaStop(evt.agentId)
+    }
   })
 
   // Boot Chanakya — persistent claude session starts here
   startChanakya(config, getSender)
+
+  // Start inbox watchers for all specialist shishyas (lazy spawn on first sandesh)
+  startShishyaRuntimes(config, getSender)
 
   createWindow()
 
@@ -95,6 +105,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   stopChanakya()
+  stopAllShishyas()
   killAllSessions()
   closeSabhaWatchers()
   stopHookServer()
