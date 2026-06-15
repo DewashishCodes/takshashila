@@ -393,6 +393,11 @@ export class CourtScene {
     )
   }
 
+  /** Current camera transform — used by HTML overlays to project world → screen */
+  getWorldTransform(): { x: number; y: number; scale: number } {
+    return { x: this.world.x, y: this.world.y, scale: this.world.scale.x }
+  }
+
   destroy(): void {
     for (const fn of this.cleanups) { try { fn() } catch { /* already gone */ } }
     this.cleanups = []
