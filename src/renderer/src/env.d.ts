@@ -111,6 +111,7 @@ interface TakshashilaAPI {
     getAgents: () => Promise<AgentIdentity[]>
     sendAadesh: (text: string) => Promise<string>
     getBlackboard: () => Promise<string>
+    updateBlackboard: (content: string) => Promise<void>
     getItihas: (limit?: number) => Promise<ItihasEntry[]>
     onSandesh: (cb: (msg: Sandesh) => void) => () => void
     onAvashtaChange: (cb: (update: AvashtaUpdate) => void) => () => void

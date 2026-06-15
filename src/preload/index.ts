@@ -40,6 +40,9 @@ const takshashila = {
     getBlackboard: (): Promise<string> =>
       ipcRenderer.invoke('sabha:getBlackboard'),
 
+    updateBlackboard: (content: string): Promise<void> =>
+      ipcRenderer.invoke('sabha:updateBlackboard', content),
+
     getItihas: (limit?: number): Promise<ItihasEntry[]> =>
       ipcRenderer.invoke('sabha:getItihas', limit),
 
