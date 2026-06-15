@@ -9,6 +9,27 @@ interface Agent {
   name: string
   domain: string
   avastha: 'idle' | 'working' | 'processing' | 'vighna' | 'siddhi'
+  lastKriya?: string
+}
+
+const ROBE_HEX: Record<string, string> = {
+  chanakya:      '#F4C430',
+  aaruni:        '#C1440E',
+  nachiketa:     '#5B7FA6',
+  gargi:         '#9B6B9B',
+  bharadwaja:    '#4A7C59',
+  chandragupta:  '#E05A2B',
+  vishnu_sharma: '#5B9B9B',
+}
+
+const CHAR_EMOJI: Record<string, string> = {
+  chanakya:      '🔮',
+  aaruni:        '⚔️',
+  nachiketa:     '🗺️',
+  gargi:         '📚',
+  bharadwaja:    '🛡️',
+  chandragupta:  '⚡',
+  vishnu_sharma: '📜',
 }
 
 interface Props {
@@ -66,38 +87,61 @@ export default function ShishyaPanel({ agent }: Props): React.JSX.Element {
       }}
     >
       {/* Header */}
-      <div style={{
-        padding: 'var(--space-3) var(--space-4)',
-        borderBottom: '1px solid var(--color-gold-dim)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-3)'
-      }}>
-        <div style={{
-          width: 40, height: 40,
-          background: 'var(--color-stone)',
-          border: '1px solid var(--color-gold-dim)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 20
-        }}>
-          🧑‍🏫
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--color-gold)', lineHeight: 1 }}>
-            {agent.name}
+      {(() => {
+        const robe  = ROBE_HEX[agent.id] ?? '#8C7B6B'
+        const emoji = CHAR_EMOJI[agent.id] ?? '🧑‍💻'
+        const isActive = agent.avastha === 'working' || agent.avastha === 'processing'
+        return (
+          <div style={{
+            padding: 'var(--space-3) var(--space-4)',
+            borderBottom: `2px solid ${robe}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
+            background: `linear-gradient(90deg, ${robe}18 0%, transparent 60%)`
+          }}>
+            {/* Robe-colored avatar — matches court sprite and sidebar card */}
+            <div style={{
+              width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+              background: robe + '22',
+              border: `2px solid ${robe}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22,
+              boxShadow: isActive ? `0 0 12px ${robe}88` : undefined,
+            }}>
+              {emoji}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--color-gold)', lineHeight: 1 }}>
+                {agent.name}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: AVASTHA_COLOR[agent.avastha],
+                  display: 'inline-block', flexShrink: 0,
+                  animation: isActive ? 'dot-blink 1.2s ease-in-out infinite' : undefined,
+                  boxShadow: isActive ? `0 0 6px ${AVASTHA_COLOR[agent.avastha]}` : undefined,
+                }} />
+                <span style={{
+                  fontFamily: 'var(--font-pixel)', fontSize: 7,
+                  color: isActive ? AVASTHA_COLOR[agent.avastha] : 'var(--color-text-secondary)'
+                }}>
+                  {agent.avastha.toUpperCase()}
+                </span>
+                {agent.domain && (
+                  <span style={{
+                    fontFamily: 'var(--font-body)', fontSize: 10,
+                    color: 'var(--color-text-dim)', marginLeft: 4
+                  }}>
+                    · {agent.domain}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
-            <span style={{
-              width: 7, height: 7, borderRadius: '50%',
-              background: AVASTHA_COLOR[agent.avastha],
-              display: 'inline-block', flexShrink: 0
-            }} />
-            <span style={{ fontFamily: 'var(--font-pixel)', fontSize: 7, color: 'var(--color-text-secondary)' }}>
-              {agent.avastha.toUpperCase()}
-            </span>
-          </div>
-        </div>
-      </div>
+        )
+      })()}
 
       {/* Tabs */}
       <div style={{
