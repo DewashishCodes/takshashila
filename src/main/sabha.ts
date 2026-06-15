@@ -6,7 +6,7 @@ import {
 } from 'fs'
 import { writeFile, readFile, mkdir } from 'fs/promises'
 import type { HarnessConfig } from './config'
-import { ensureHookSettings, type HookEvent } from './hooks'
+import { ensureHookSettings, sandeshShimPath, type HookEvent } from './hooks'
 
 // ─── Types (mirrored in preload) ──────────────────────────────────────────────
 
@@ -113,6 +113,12 @@ export async function initSabha(home: string): Promise<void> {
 
     // Hook wiring: .claude/settings.json in each workspace points at the shim
     ensureHookSettings(p.workspace(seed.id), home)
+
+    // Persona file for specialists (chanakya's CLAUDE.md is managed by chanakya.ts)
+    if (seed.id !== 'chanakya') {
+      const identity: AgentIdentity = { ...seed, kshetra: p.workspace(seed.id) }
+      writeShishyaClaudeMd(identity)
+    }
   }
 
   appendItihas({ timestamp: new Date().toISOString(), event: 'sabha:init', payload: { home } })
@@ -161,6 +167,42 @@ function readAllAgents(): AgentIdentity[] {
     .filter((a): a is AgentIdentity => a !== null)
 }
 
+// ─── Per-shishya CLAUDE.md ────────────────────────────────────────────────────
+// Gives each specialist an identity so a spawned claude session knows who it is,
+// how to receive work (via inbox), and how to report back (via cth-sandesh).
+
+function writeShishyaClaudeMd(identity: AgentIdentity): void {
+  const kshetra = identity.kshetra
+  mkdirSync(kshetra, { recursive: true })
+  const sandeshCmd = `node "${sandeshShimPath(sabhaHome)}"`
+  const lines = [
+    `# ${identity.name} — ${identity.domain}`,
+    '',
+    `You are **${identity.name}**, a specialist Shishya of Takshashila.`,
+    `**Domain:** ${identity.domain}`,
+    `**Persona:** ${identity.persona}`,
+    '',
+    '## Receiving work',
+    'Chanakya sends tasks to your inbox as `[Aadesh from chanakya]: <text>`. Work on them diligently.',
+    '',
+    '## Reporting results',
+    'When your work is done, send results back to Chanakya:',
+    '```bash',
+    `${sandeshCmd} --to chanakya --subject "<result title>" --body "<summary of what you accomplished>"`,
+    '```',
+    '',
+    '## Smriti (memory) conventions',
+    '- Keep smriti.md under 2000 words.',
+    '- Record key decisions, findings, and persistent context — not transient task steps.',
+    '',
+    '## Conduct',
+    '- Work within your domain.',
+    '- Complete tasks precisely. Report obstacles clearly.',
+    '- Do not initiate unsolicited communication.',
+  ]
+  writeFileSync(join(kshetra, 'CLAUDE.md'), lines.join('\n'), 'utf8')
+}
+
 // ─── Add Shishya (M8) ─────────────────────────────────────────────────────────
 
 function slugify(name: string): string {
@@ -180,6 +222,7 @@ function createAgent(name: string, domain: string, persona: string): AgentIdenti
   writeFileSync(p.identity(id), JSON.stringify(identity, null, 2), 'utf8')
   writeFileSync(p.smriti(id), `# ${name} — Smriti\n\n`, 'utf8')
   ensureHookSettings(p.workspace(id), sabhaHome)
+  writeShishyaClaudeMd(identity)
 
   appendItihas({ timestamp: new Date().toISOString(), event: 'shishya:added', agentId: id, payload: { name, domain } })
   watchAgent(id) // live immediately — no restart needed
@@ -325,7 +368,8 @@ export function closeSabhaWatchers(): void {
 export function registerSabhaHandlers(
   getSender: () => WebContents | null,
   getConfig: () => HarnessConfig,
-  onAadesh?: () => void
+  onAadesh?: () => void,
+  onAgentAdded?: (id: string) => void
 ): void {
   // Sabha
   ipcMain.handle('sabha:getAgents', () => readAllAgents())
@@ -393,9 +437,11 @@ export function registerSabhaHandlers(
   })
 
   // Add Shishya (M8)
-  ipcMain.handle('sabha:addAgent', (_event, name: string, domain: string, persona: string) =>
-    createAgent(name, domain, persona)
-  )
+  ipcMain.handle('sabha:addAgent', (_event, name: string, domain: string, persona: string) => {
+    const identity = createAgent(name, domain, persona)
+    onAgentAdded?.(identity.id)
+    return identity
+  })
 
   // Sabha write helpers (used by future M3+ modules)
   ipcMain.handle('sabha:updateSmriti', async (_event, agentId: string, content: string) => {
