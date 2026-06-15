@@ -33,6 +33,8 @@ export default function App(): React.JSX.Element {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [showAddShishya, setShowAddShishya] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
+  const [aadeshHistory, setAadeshHistory] = useState<string[]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const refreshAgents = useCallback(() => {
@@ -78,8 +80,25 @@ export default function App(): React.JSX.Element {
 
   function sendAadesh(): void {
     if (!aadesh.trim()) return
+    setAadeshHistory((prev) => [aadesh.trim(), ...prev.slice(0, 49)])
+    setHistoryIndex(-1)
     window.takshashila.sabha.sendAadesh(aadesh.trim())
     setAadesh('')
+  }
+
+  function handleAadeshKey(e: React.KeyboardEvent<HTMLInputElement>): void {
+    if (e.key === 'Enter') { sendAadesh(); return }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      const next = Math.min(historyIndex + 1, aadeshHistory.length - 1)
+      if (next >= 0) { setHistoryIndex(next); setAadesh(aadeshHistory[next]) }
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      const next = historyIndex - 1
+      if (next < 0) { setHistoryIndex(-1); setAadesh('') }
+      else { setHistoryIndex(next); setAadesh(aadeshHistory[next]) }
+    }
   }
 
   return (
@@ -179,7 +198,7 @@ export default function App(): React.JSX.Element {
           type="text"
           value={aadesh}
           onChange={(e) => setAadesh(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendAadesh()}
+          onKeyDown={handleAadeshKey}
           placeholder="Issue a mandate to Chanakya…"
           style={{
             flex: 1, background: 'transparent', border: 'none', outline: 'none',
