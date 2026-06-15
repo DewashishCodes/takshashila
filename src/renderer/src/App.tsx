@@ -5,6 +5,7 @@ import CourtFloor from './components/CourtFloor'
 import OnboardingWizard from './components/OnboardingWizard'
 import AddShishyaModal from './components/AddShishyaModal'
 import SearchPanel from './components/SearchPanel'
+import AnumatiPanel from './components/AnumatiPanel'
 
 interface Agent {
   id: string
@@ -201,6 +202,9 @@ export default function App(): React.JSX.Element {
           ►
         </button>
       </div>
+
+      {/* Anumati toast stack — approval requests from agent sessions */}
+      <AnumatiPanel />
 
       {/* Overlays */}
       {showOnboarding && (
